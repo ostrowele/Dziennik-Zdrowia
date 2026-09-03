@@ -218,10 +218,19 @@
   .goal-bar-bg{height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;}
   .goal-bar-fill{height:100%;border-radius:4px;transition:width .2s;}
 
-  .streak-card{display:flex;align-items:center;gap:10px;padding:12px 2px;}
-  .streak-card .flame{font-size:20px;flex:0 0 auto;}
-  .streak-card .txt{font-size:13px;line-height:1.35;}
-  .streak-card .txt b{color:var(--accent);}
+  .streak-strip{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 6px;margin:0 -2px;scroll-snap-type:x proximity;}
+  .streak-chip{
+    flex:0 0 auto;scroll-snap-align:start;width:150px;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;display:flex;flex-direction:column;gap:8px;
+  }
+  .streak-chip .icon-badge{
+    width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:16px;flex:0 0 auto;
+  }
+  .streak-chip .big{font-size:24px;font-weight:700;line-height:1;}
+  .streak-chip .big span{font-size:13px;font-weight:600;color:var(--muted);margin-left:2px;}
+  .streak-chip .lbl{font-size:12px;color:var(--muted);line-height:1.35;}
 
   .seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px;}
   .seg button{
@@ -643,18 +652,30 @@ async function viewDashboard(){
   if(isToday){
     const medsStreak = await computeMedsStreak();
     const symStreaks = await computeSymptomStreaks(2);
-    const lines = [];
+    const chips = [];
     if(medsStreak){
-      lines.push(`<div class="streak-card"><div class="flame">🔥</div><div class="txt"><b>${medsStreak.streak}</b> dni z rzędu — wszystkie leki wzięte (do wczoraj) · dziś: ${medsStreak.takenToday}/${medsStreak.totalActive}</div></div>`);
+      chips.push(`<div class="streak-chip">
+          <div class="icon-badge" style="background:var(--accent-soft);">🔥</div>
+          <div class="big">${medsStreak.streak}<span>dni</span></div>
+          <div class="lbl">z rzędu wszystkie leki wzięte (do wczoraj) · dziś ${medsStreak.takenToday}/${medsStreak.totalActive}</div>
+        </div>`);
     }
     symStreaks.forEach(s=>{
       if(s.daysSince===0){
-        lines.push(`<div class="streak-card"><div class="flame">📍</div><div class="txt">„${escapeHtml(s.name)}” — wystąpił dziś</div></div>`);
+        chips.push(`<div class="streak-chip">
+            <div class="icon-badge" style="background:var(--danger-soft);">📍</div>
+            <div class="big" style="font-size:15px;">dzisiaj</div>
+            <div class="lbl">„${escapeHtml(s.name)}” wystąpił</div>
+          </div>`);
       } else {
-        lines.push(`<div class="streak-card"><div class="flame">🌿</div><div class="txt"><b>${s.daysSince}</b> dni bez „${escapeHtml(s.name)}”</div></div>`);
+        chips.push(`<div class="streak-chip">
+            <div class="icon-badge" style="background:var(--good-soft);">🌿</div>
+            <div class="big">${s.daysSince}<span>dni</span></div>
+            <div class="lbl">bez „${escapeHtml(s.name)}”</div>
+          </div>`);
       }
     });
-    if(lines.length) streakHtml = `<section class="block"><div class="block-head"><h2>Serie</h2></div><div class="list">${lines.join('')}</div></section>`;
+    if(chips.length) streakHtml = `<section class="block"><div class="block-head"><h2>Serie</h2></div><div class="streak-strip">${chips.join('')}</div></section>`;
   }
 
   const bowelCnt = dl.bowel.length;
@@ -669,9 +690,12 @@ async function viewDashboard(){
           <div style="font-size:14.5px;${done?'':'color:var(--text);'}">${escapeHtml(m.name)}</div>
           <div class="note-chip">${escapeHtml(m.dose||'')}${m.dose&&m.schedule?' · ':''}${escapeHtml(m.schedule||'')}${done?` · wzięte ${takenToday.map(t=>t.time).join(', ')}`:''}</div>
         </div>
-        <button class="qbtn ${done?'on':''}" style="min-height:0;padding:9px 12px;flex-direction:row;gap:6px;" data-act="med" data-id="${m.id}">
-          <span class="ic" style="font-size:16px;">${done?'✓':'○'}</span><span class="lb" style="font-size:12px;">${done?'wzięte':'weź'}</span>
-        </button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn ghost sm" style="padding:9px 10px;" data-act="med-edit" data-id="${m.id}">⏱</button>
+          <button class="qbtn ${done?'on':''}" style="min-height:0;padding:9px 12px;flex-direction:row;gap:6px;" data-act="med" data-id="${m.id}">
+            <span class="ic" style="font-size:16px;">${done?'✓':'○'}</span><span class="lb" style="font-size:12px;">${done?'wzięte':'weź'}</span>
+          </button>
+        </div>
       </div>`;
     }).join('')}</div>`
     : `<div class="empty">Brak zdefiniowanych leków.<br><button class="btn secondary sm" data-act="goto-settings-meds">Dodaj leki w Ustawieniach</button></div>`;
@@ -727,13 +751,17 @@ async function viewDashboard(){
     ${streakHtml}
 
     <section class="block">
-      <div class="block-head"><h2>Napoje</h2></div>
+      <div class="block-head"><h2>Napoje</h2>
+        <button class="link" data-act="edit-drinks">edytuj</button>
+      </div>
       <div class="quick-grid">${drinksHtml}</div>
       ${goalsHtml}
     </section>
 
     <section class="block">
-      <div class="block-head"><h2>Ciało</h2></div>
+      <div class="block-head"><h2>Ciało</h2>
+        <button class="link" data-act="edit-cialo">edytuj</button>
+      </div>
       <div class="quick-grid cols-2">
         <button class="qbtn ${bowelCnt?'on':''}" data-act="bowel">
           ${bowelCnt?`<span class="count">${bowelCnt}</span>`:''}
@@ -802,6 +830,17 @@ function wireDashboard(){
   const sleepBtn = $('[data-act="sleep"]');
   if(sleepBtn) sleepBtn.onclick = ()=>openSleepSheet(date);
 
+  const editDrinksBtn = $('[data-act="edit-drinks"]');
+  if(editDrinksBtn) editDrinksBtn.onclick = async ()=>openDrinksListSheet(date, await getDayLog(date));
+
+  const editCialoBtn = $('[data-act="edit-cialo"]');
+  if(editCialoBtn) editCialoBtn.onclick = async ()=>openCialoListSheet(date, await getDayLog(date));
+
+  $$('[data-act="med-edit"]').forEach(b=>b.onclick=async ()=>{
+    const m = medById(b.dataset.id);
+    openMedDosesSheet(date, m, await getDayLog(date));
+  });
+
   $$('[data-act="med"]').forEach(b=>b.onclick=async ()=>{
     const m = medById(b.dataset.id);
     await mutateDay(date, dl=>dl.meds.push({id:uid(), medId:m.id, time:nowTime()}));
@@ -851,6 +890,106 @@ function wireDashboard(){
 function cfgDrinkType(id){ return (state.cfg.drinkTypes||[]).find(d=>d.id===id) || {id, name:id, defaultMl:200, icon:'🥤'}; }
 
 // ---- sheets used from dashboard ----
+function openListEditSheet(title, rows){
+  openSheet(`
+    <h3>${title}</h3>
+    <div class="list">${rows.length ? rows.map(r=>`
+      <div class="row">
+        <div>
+          <div style="font-size:14px;">${r.label}</div>
+          ${r.sub?`<div class="note-chip">${r.sub}</div>`:''}
+        </div>
+        <button class="swipe-del" data-del-id="${r.id}">✕</button>
+      </div>`).join('') : '<div class="empty">Brak wpisów.</div>'}</div>
+  `, (ov)=>{
+    ov.querySelectorAll('[data-del-id]').forEach(b=>b.onclick=async ()=>{
+      await rows.find(r=>r.id===b.dataset.delId).onDelete();
+      closeSheet(); toast('Usunięto'); await render();
+    });
+  });
+}
+
+function openDrinksListSheet(date, dl){
+  const rows = dl.drinks.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(d=>({
+    id:d.id, label:`${drinkIcon(d.type)} ${escapeHtml(d.label||drinkName(d.type))}`, sub:`${d.ml}ml · ${d.time}`,
+    onDelete: ()=>mutateDay(date, dl2=>{ dl2.drinks = dl2.drinks.filter(x=>x.id!==d.id); })
+  }));
+  openListEditSheet('Napoje dziś', rows);
+}
+
+function openBowelListSheet(date, dl){
+  const rows = dl.bowel.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(b=>({
+    id:b.id, label:'🚽 Wypróżnienie', sub:`${b.bristol?'Bristol '+b.bristol+' · ':''}${b.time}${b.note?' · '+escapeHtml(b.note):''}`,
+    onDelete: ()=>mutateDay(date, dl2=>{ dl2.bowel = dl2.bowel.filter(x=>x.id!==b.id); })
+  }));
+  openListEditSheet('Wypróżnienia dziś', rows);
+}
+
+function openNotesListSheet(date, dl){
+  const rows = dl.notes.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(n=>({
+    id:n.id, label:'✎ '+escapeHtml(n.text), sub:n.time,
+    onDelete: ()=>mutateDay(date, dl2=>{ dl2.notes = dl2.notes.filter(x=>x.id!==n.id); })
+  }));
+  openListEditSheet('Notatki dziś', rows);
+}
+
+function openCialoListSheet(date, dl){
+  openSheet(`
+    <h3>Ciało — dziś</h3>
+    <label class="field-label" style="margin-top:0;">Wypróżnienia</label>
+    <div class="list">${dl.bowel.length? dl.bowel.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(b=>`
+      <div class="row">
+        <div style="font-size:14px;">🚽 ${b.time}${b.bristol?' · Bristol '+b.bristol:''}${b.note?' · '+escapeHtml(b.note):''}</div>
+        <button class="swipe-del" data-del-bowel="${b.id}">✕</button>
+      </div>`).join('') : '<div class="empty">Brak.</div>'}</div>
+    <label class="field-label">Notatki</label>
+    <div class="list">${dl.notes.length? dl.notes.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(n=>`
+      <div class="row">
+        <div style="font-size:14px;">✎ ${n.time} — ${escapeHtml(n.text)}</div>
+        <button class="swipe-del" data-del-note="${n.id}">✕</button>
+      </div>`).join('') : '<div class="empty">Brak.</div>'}</div>
+  `, (ov)=>{
+    ov.querySelectorAll('[data-del-bowel]').forEach(b=>b.onclick=async ()=>{
+      await mutateDay(date, dl2=>{ dl2.bowel = dl2.bowel.filter(x=>x.id!==b.dataset.delBowel); });
+      closeSheet(); toast('Usunięto'); await render();
+    });
+    ov.querySelectorAll('[data-del-note]').forEach(b=>b.onclick=async ()=>{
+      await mutateDay(date, dl2=>{ dl2.notes = dl2.notes.filter(x=>x.id!==b.dataset.delNote); });
+      closeSheet(); toast('Usunięto'); await render();
+    });
+  });
+}
+
+function openMedDosesSheet(date, med, dl){
+  const doses = dl.meds.filter(x=>x.medId===med.id).sort((a,b)=>a.time.localeCompare(b.time));
+  openSheet(`
+    <h3>${escapeHtml(med.name)} — dziś</h3>
+    <div class="sub">Popraw godzinę, usuń pomyłkę, albo dodaj dawkę wziętą o innej porze.</div>
+    <div class="list" id="dose-list">${doses.length? doses.map(d=>`
+      <div class="row">
+        <input type="time" value="${d.time}" data-dose-id="${d.id}" style="width:auto;flex:0 0 auto;">
+        <button class="swipe-del" data-del-dose="${d.id}">✕</button>
+      </div>`).join('') : '<div class="empty">Brak dawek dziś.</div>'}</div>
+    <div style="margin-top:14px;"><button class="btn secondary" id="add-dose">+ Dodaj dawkę teraz</button></div>
+  `, (ov)=>{
+    ov.querySelectorAll('input[type=time]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        if(!inp.value) return;
+        await mutateDay(date, dl2=>{ const e = dl2.meds.find(x=>x.id===inp.dataset.doseId); if(e) e.time = inp.value; });
+        toast('Zaktualizowano godzinę');
+      };
+    });
+    ov.querySelectorAll('[data-del-dose]').forEach(b=>b.onclick=async ()=>{
+      await mutateDay(date, dl2=>{ dl2.meds = dl2.meds.filter(x=>x.id!==b.dataset.delDose); });
+      closeSheet(); toast('Usunięto'); await render();
+    });
+    ov.querySelector('#add-dose').onclick = async ()=>{
+      await mutateDay(date, dl2=>dl2.meds.push({id:uid(), medId:med.id, time:nowTime()}));
+      closeSheet(); toast('Dodano dawkę'); await render();
+    };
+  });
+}
+
 function openDrinkCustomSheet(date){
   const types = state.cfg.drinkTypes||[];
   openSheet(`
@@ -1056,18 +1195,22 @@ function daySummaryChips(dl){
   const chips = [];
   if(dl.drinks.length){
     const coffee = dl.drinks.filter(d=>d.type==='coffee').length;
-    if(coffee) chips.push(`☕${coffee}`);
+    if(coffee) chips.push({text:`☕${coffee}`});
     const water = dl.drinks.filter(d=>d.type==='water').length;
-    if(water) chips.push(`💧${water}`);
+    if(water) chips.push({text:`💧${water}`});
   }
-  if(dl.bowel.length) chips.push(`🚽${dl.bowel.length}`);
+  if(dl.bowel.length) chips.push({text:`🚽${dl.bowel.length}`});
   if(dl.mood.length){
-    const avg = Math.round(dl.mood.reduce((s,m)=>s+m.mood,0)/dl.mood.length);
-    chips.push(`😊${avg}`);
+    const moodAvg = dl.mood.reduce((s,m)=>s+m.mood,0)/dl.mood.length;
+    const bg = `rgba(127,166,92,${(0.18+0.75*Math.min(1,Math.max(0,(moodAvg-1)/9))).toFixed(2)})`;
+    chips.push({text:`😊${moodAvg.toFixed(1)}`, style:`background:${bg};color:var(--text);`});
   }
-  if(dl.symptoms.length) chips.push(`⚠${dl.symptoms.length}`);
-  if(dl.sleep) chips.push(`🌙${dl.sleep.quality}`);
-  if(dl.meds.length) chips.push(`💊${dl.meds.length}`);
+  if(dl.symptoms.length){
+    const bg = `rgba(193,85,74,${(0.25+0.6*Math.min(1,dl.symptoms.length/5)).toFixed(2)})`;
+    chips.push({text:`⚠${dl.symptoms.length}`, style:`background:${bg};color:var(--text);`});
+  }
+  if(dl.sleep) chips.push({text:`🌙${dl.sleep.quality}`});
+  if(dl.meds.length) chips.push({text:`💊${dl.meds.length}`});
   return chips;
 }
 
@@ -1094,7 +1237,7 @@ async function viewHistory(){
           <div style="font-size:14px;">${d} ${MONTHS_PL[m-1]} <span class="note-chip">${DOW_PL[dt.getDay()]}</span></div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%;">
-          ${hasData ? chips.map(c=>`<span class="pill">${c}</span>`).join('') : '<span class="note-chip">brak wpisów</span>'}
+          ${hasData ? chips.map(c=>`<span class="pill" style="${c.style||''}">${c.text}</span>`).join('') : '<span class="note-chip">brak wpisów</span>'}
         </div>
       </div>`;
   }
@@ -1364,7 +1507,7 @@ function svgIntraday(dayLog, opts={}){
 function statsSegHtml(range){
   const opts = [['today','Dziś'],[7,'7 dni'],[30,'30 dni'],[90,'90 dni'],['all','Wszystko']];
   return `<div class="seg" style="margin-bottom:18px;flex-wrap:wrap;">${opts.map(([v,lb])=>
-    `<button data-range="${v}" class="${String(range)===String(v)?'active':''}" style="flex:0 0 auto;padding:8px 10px;">${lb}</button>`).join('')}</div>`;
+    `<button data-range="${v}" class="${String(range)===String(v)?'active':''}">${lb}</button>`).join('')}</div>`;
 }
 
 function svgHeatmap(agg, opts){
@@ -1392,7 +1535,9 @@ function svgHeatmap(agg, opts){
       if(mo!==lastMonth){ monthLabels += `<text x="${x}" y="10" font-size="8" fill="var(--muted-2)">${MONTHS_PL[Number(mo.slice(5,7))-1].slice(0,3)}</text>`; lastMonth=mo; }
     }
   });
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${monthLabels}${rects}</svg>`;
+  // Fixed pixel size (not width:100%) so a narrow viewBox (few weeks) never gets
+  // stretched to fill the container — it only shrinks via max-width if it overflows.
+  return `<svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="width:auto;max-width:100%;height:auto;display:block;">${monthLabels}${rects}</svg>`;
 }
 
 async function viewStatsToday(range){
@@ -1500,6 +1645,7 @@ async function viewStats(){
       <div class="list">${insightsHtml}</div>
     </section>
 
+    ${range===7 ? '' : `
     <section class="block">
       <div class="block-head"><h2>Heatmapa — nastrój</h2></div>
       <div class="chart-wrap" style="overflow-x:auto;">
@@ -1515,6 +1661,7 @@ async function viewStats(){
       </div>
       <p class="note-chip" style="margin-top:6px;padding:0 4px;">Intensywniejszy czerwony = więcej zgłoszonych objawów danego dnia.</p>
     </section>
+    `}
 
     <section class="block">
       <div class="block-head"><h2>Nastrój · energia · fokus · produktywność</h2></div>
@@ -1574,7 +1721,7 @@ async function viewSettings(){
     {id:'drinks', lb:'Napoje'}, {id:'general', lb:'Ogólne'}, {id:'export', lb:'Eksport'},
   ];
   const segHtml = `<div class="seg" style="margin-bottom:18px;flex-wrap:wrap;">${tabs.map(t=>
-    `<button data-stab="${t.id}" class="${tab===t.id?'active':''}" style="flex:0 0 auto;padding:8px 12px;">${t.lb}</button>`).join('')}</div>`;
+    `<button data-stab="${t.id}" class="${tab===t.id?'active':''}">${t.lb}</button>`).join('')}</div>`;
 
   let body = '';
   if(tab==='meds') body = settingsMedsHtml();
