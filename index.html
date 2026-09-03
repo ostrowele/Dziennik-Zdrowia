@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dziennik Zdrowia">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Dziennik Zdrowia</title>
+<style>
+  :root{
+    --bg:#14171c;
+    --surface:#1b2027;
+    --surface-2:#232a33;
+    --line:#2c3440;
+    --text:#e8e6e1;
+    --muted:#8b92a0;
+    --muted-2:#5f6774;
+    --accent:#c98a4b;
+    --accent-soft:#c98a4b26;
+    --teal:#5fa8a0;
+    --teal-soft:#5fa8a026;
+    --danger:#c1554a;
+    --danger-soft:#c1554a26;
+    --good:#7fa65c;
+    --good-soft:#7fa65c26;
+    --radius:14px;
+    --radius-sm:9px;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding-bottom:calc(72px + env(safe-area-inset-bottom));
+  }
+  h1,h2,h3{font-weight:600;margin:0 0 4px;letter-spacing:-0.01em;}
+  p{margin:0;}
+  button{font-family:inherit;}
+  ::selection{background:var(--accent-soft);}
+
+  /* ---------- App shell ---------- */
+  #app{max-width:520px;margin:0 auto;padding:16px 16px 8px;}
+
+  .topbar{
+    display:flex;align-items:baseline;justify-content:space-between;
+    padding:6px 2px 18px;
+  }
+  .topbar .date-nav{display:flex;align-items:center;gap:10px;}
+  .topbar .date-nav button{
+    background:none;border:none;color:var(--muted);font-size:20px;
+    padding:4px 8px;cursor:pointer;border-radius:8px;line-height:1;
+  }
+  .topbar .date-nav button:active{background:var(--surface-2);}
+  .topbar .date-label{font-size:17px;font-weight:600;}
+  .topbar .date-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+  .topbar .brand{font-size:13px;color:var(--muted-2);letter-spacing:.02em;}
+
+  section.block{margin-bottom:22px;}
+  .block-head{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:10px;padding:0 2px;
+  }
+  .block-head h2{font-size:14px;color:var(--muted);font-weight:600;text-transform:none;}
+  .block-head .link{font-size:13px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px;}
+
+  /* quick tap grid */
+  .quick-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .quick-grid.cols-2{grid-template-columns:repeat(2,1fr);}
+  .qbtn{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 8px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;
+    cursor:pointer;color:var(--text);position:relative;min-height:76px;justify-content:center;
+    transition:transform .08s ease, background .15s ease;
+  }
+  .qbtn:active{transform:scale(.95);background:var(--surface-2);}
+  .qbtn .ic{font-size:22px;line-height:1;}
+  .qbtn .lb{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.2;}
+  .qbtn .count{
+    position:absolute;top:6px;right:8px;font-size:11px;color:var(--accent);
+    background:var(--accent-soft);border-radius:20px;padding:1px 6px;min-width:16px;text-align:center;
+  }
+  .qbtn.on{border-color:var(--good);background:var(--good-soft);}
+  .qbtn.on .lb{color:var(--good);}
+
+  /* cards / list rows */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .row + .row{border-top:1px solid var(--line);}
+  .list .row{padding:11px 2px;}
+  .list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;padding:0 12px;}
+
+  .pill{
+    display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);
+    background:var(--surface-2);border-radius:20px;padding:4px 10px;
+  }
+  .pill.accent{color:var(--accent);background:var(--accent-soft);}
+  .pill.teal{color:var(--teal);background:var(--teal-soft);}
+  .pill.danger{color:var(--danger);background:var(--danger-soft);}
+
+  .tag-grid{display:flex;flex-wrap:wrap;gap:8px;}
+  .tagbtn{
+    background:var(--surface);border:1px solid var(--line);border-radius:20px;
+    padding:9px 14px;font-size:13.5px;color:var(--text);cursor:pointer;
+  }
+  .tagbtn:active{background:var(--surface-2);}
+  .tagbtn.small{padding:6px 11px;font-size:12.5px;}
+
+  .empty{
+    text-align:center;color:var(--muted);font-size:13.5px;padding:22px 10px;
+    border:1px dashed var(--line);border-radius:var(--radius);
+  }
+  .empty button{margin-top:10px;}
+
+  /* sliders */
+  .slider-row{padding:12px 2px;}
+  .slider-row .row{margin-bottom:6px;}
+  .slider-row label{font-size:14px;}
+  .slider-row .val{font-size:15px;font-weight:600;color:var(--accent);}
+  input[type=range]{
+    -webkit-appearance:none;width:100%;height:6px;border-radius:4px;
+    background:var(--surface-2);outline:none;margin:6px 0 2px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:3px solid var(--bg);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid var(--bg);cursor:pointer;
+  }
+
+  textarea,input[type=text],input[type=number],input[type=time],select{
+    width:100%;background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:10px 12px;font-size:14.5px;font-family:inherit;
+  }
+  textarea{min-height:64px;resize:vertical;}
+  label.field-label{font-size:12.5px;color:var(--muted);display:block;margin:12px 0 5px;}
+  label.field-label:first-child{margin-top:0;}
+
+  .btn{
+    background:var(--accent);color:#1a1408;border:none;border-radius:11px;
+    padding:12px 18px;font-size:14.5px;font-weight:600;cursor:pointer;width:100%;
+  }
+  .btn:active{opacity:.85;}
+  .btn.secondary{background:var(--surface-2);color:var(--text);}
+  .btn.ghost{background:none;color:var(--muted);border:1px solid var(--line);}
+  .btn.danger{background:var(--danger-soft);color:var(--danger);}
+  .btn.sm{padding:8px 12px;font-size:13px;width:auto;}
+  .btn-row{display:flex;gap:10px;}
+  .btn-row .btn{flex:1;}
+
+  /* bottom nav */
+  nav.tabbar{
+    position:fixed;left:0;right:0;bottom:0;
+    background:rgba(20,23,28,.92);backdrop-filter:blur(10px);
+    border-top:1px solid var(--line);
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+    display:flex;justify-content:space-around;z-index:40;
+  }
+  nav.tabbar button{
+    background:none;border:none;color:var(--muted-2);display:flex;flex-direction:column;
+    align-items:center;gap:2px;font-size:10.5px;padding:6px 10px;border-radius:10px;cursor:pointer;flex:1;
+  }
+  nav.tabbar button .ic{font-size:20px;}
+  nav.tabbar button.active{color:var(--accent);}
+
+  /* modal sheet */
+  .overlay{
+    position:fixed;inset:0;background:rgba(10,11,13,.6);z-index:100;
+    display:flex;align-items:flex-end;justify-content:center;
+  }
+  .sheet{
+    background:var(--bg);border-top:1px solid var(--line);border-radius:20px 20px 0 0;
+    width:100%;max-width:520px;max-height:88vh;overflow-y:auto;
+    padding:10px 18px calc(24px + env(safe-area-inset-bottom));
+    animation:sheetup .18s ease-out;
+  }
+  @keyframes sheetup{from{transform:translateY(16px);opacity:.6;}to{transform:translateY(0);opacity:1;}}
+  .sheet-handle{width:36px;height:4px;background:var(--line);border-radius:4px;margin:6px auto 14px;}
+  .sheet h3{font-size:16px;margin-bottom:2px;}
+  .sheet .sub{font-size:12.5px;color:var(--muted);margin-bottom:16px;}
+  .sheet-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+
+  /* charts */
+  .chart-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 10px 8px;}
+  .chart-wrap .chart-title{font-size:13px;color:var(--text);font-weight:600;padding:0 6px 8px;}
+  svg.chart{width:100%;display:block;}
+  .chart-legend{display:flex;gap:14px;padding:6px 8px 2px;font-size:11.5px;color:var(--muted);}
+  .chart-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .chart-legend i{width:9px;height:9px;border-radius:3px;display:inline-block;}
+
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .stat-tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;}
+  .stat-tile .num{font-size:22px;font-weight:700;}
+  .stat-tile .lb{font-size:12px;color:var(--muted);margin-top:2px;}
+  .stat-tile .delta{font-size:11.5px;margin-top:4px;}
+  .stat-tile .delta.up{color:var(--good);}
+  .stat-tile .delta.down{color:var(--danger);}
+
+  .corr-row{display:flex;align-items:center;gap:10px;padding:10px 2px;}
+  .corr-row .bar-bg{flex:1;height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;}
+  .corr-row .bar-fill{height:100%;border-radius:4px;}
+  .corr-row .lbl{font-size:13px;flex:0 0 auto;width:min(150px,42%);}
+  .corr-row .val{font-size:12.5px;color:var(--muted);width:38px;text-align:right;}
+
+  .seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px;}
+  .seg button{
+    flex:1;background:none;border:none;color:var(--muted);padding:8px 4px;font-size:12.5px;
+    border-radius:8px;cursor:pointer;font-weight:600;
+  }
+  .seg button.active{background:var(--accent);color:#1a1408;}
+
+  .toast{
+    position:fixed;bottom:calc(84px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+    background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+    padding:10px 18px;border-radius:30px;font-size:13px;z-index:200;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+  .settings-group{margin-bottom:20px;}
+  .settings-group h3{font-size:13px;color:var(--muted);margin-bottom:8px;padding:0 2px;}
+  .swipe-del{color:var(--danger);background:none;border:none;font-size:18px;padding:4px 6px;cursor:pointer;}
+
+  .note-chip{font-size:12px;color:var(--muted-2);margin-top:2px;}
+  .badge-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0;}
+
+  ::-webkit-scrollbar{width:0;height:0;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav class="tabbar" id="tabbar"></nav>
+<div id="toast" class="toast"></div>
+
+<script>
+/* =========================================================================
+   DZIENNIK ZDROWIA — single-file health tracker
+   Storage: localStorage-backed shim (see storageShim below) — works fully
+   standalone: as a local file, hosted anywhere, or installed to a home
+   screen. No dependency on any host-injected APIs.
+   Data model:
+     key "config"          -> { medications:[], symptoms:[], activities:[], drinkTypes:[], dayBoundaryHour, version }
+     key "month:YYYY-MM"   -> { "01": DayLog, "02": DayLog, ... }  (per day-of-month)
+   DayLog = { drinks:[], bowel:[], meds:[], symptoms:[], mood:[], activities:[], sleep:{quality,note}, notes:[] }
+   ========================================================================= */
+
+// ---------- tiny utils ----------
+const $ = (sel,root=document)=>root.querySelector(sel);
+const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+const uid = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const pad2 = n => String(n).padStart(2,'0');
+const MONTHS_PL = ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'];
+const DOW_PL = ['niedziela','poniedziałek','wtorek','środa','czwartek','piątek','sobota'];
+
+function fmtDate(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function monthKeyOf(dateStr){ return dateStr.slice(0,7); }
+function dayOfMonthKey(dateStr){ return dateStr.slice(8,10); }
+function addDays(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m-1, d+n);
+  return fmtDate(dt);
+}
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>t.classList.remove('show'), 1600);
+}
+function nowTime(){
+  const d = new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// ---------- storage shim: same async shape as window.storage, backed by localStorage ----------
+const LS_PREFIX = 'dziennikZdrowia:';
+const storageShim = {
+  async get(key){
+    let v;
+    try{ v = localStorage.getItem(LS_PREFIX+key); }
+    catch(e){ throw {code:'unavailable', message:String(e)}; }
+    if(v===null) throw {code:'not_found', message:'no value for '+key};
+    return {key, value:v};
+  },
+  async set(key, value){
+    try{ localStorage.setItem(LS_PREFIX+key, value); }
+    catch(e){ throw {code: (e && e.name==='QuotaExceededError')?'quota_exceeded':'unavailable', message:String(e)}; }
+    return {key, value};
+  },
+  async delete(key){
+    try{ localStorage.removeItem(LS_PREFIX+key); }catch(e){ /* ignore */ }
+    return {key, deleted:true};
+  },
+  async list(prefix=''){
+    const keys = [];
+    try{
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if(k && k.startsWith(LS_PREFIX+prefix)) keys.push(k.slice(LS_PREFIX.length));
+      }
+    }catch(e){ /* ignore */ }
+    return {keys};
+  }
+};
+
+// ---------- storage layer (with in-memory cache to cut calls) ----------
+const cache = { config:null, months:{} };
+
+async function loadConfig(){
+  if(cache.config) return cache.config;
+  try{
+    const r = await storageShim.get('config');
+    cache.config = r ? JSON.parse(r.value) : defaultConfig();
+  }catch(e){
+    cache.config = defaultConfig();
+  }
+  return cache.config;
+}
+async function saveConfig(cfg){
+  cache.config = cfg;
+  try{
+    await storageShim.set('config', JSON.stringify(cfg));
+  }catch(e){
+    toast('Nie udało się zapisać (pamięć przeglądarki). Spróbuj ponownie.');
+    throw e;
+  }
+}
+function defaultConfig(){
+  return {
+    version:1,
+    dayBoundaryHour:4,
+    drinkTypes:[
+      {id:'coffee', name:'Kawa', icon:'☕', defaultMl:200},
+      {id:'water', name:'Woda', icon:'💧', defaultMl:250},
+      {id:'tea', name:'Herbata', icon:'🍵', defaultMl:200},
+    ],
+    medications:[],
+    symptoms:[
+      {id:uid(), name:'Rozkojarzenie', group:'Koncentracja'},
+      {id:uid(), name:'Prokrastynacja', group:'Koncentracja'},
+      {id:uid(), name:'Impulsywność', group:'Koncentracja'},
+      {id:uid(), name:'Hiperfokus', group:'Koncentracja'},
+      {id:uid(), name:'Obniżony nastrój', group:'Nastrój / lęk'},
+      {id:uid(), name:'Lęk', group:'Nastrój / lęk'},
+      {id:uid(), name:'Drażliwość', group:'Nastrój / lęk'},
+      {id:uid(), name:'Anhedonia', group:'Nastrój / lęk'},
+      {id:uid(), name:'Ruminacje', group:'Nastrój / lęk'},
+      {id:uid(), name:'Kołatanie serca', group:'Kardio'},
+      {id:uid(), name:'Ból w klatce piersiowej', group:'Kardio'},
+      {id:uid(), name:'Zawroty głowy', group:'Kardio'},
+      {id:uid(), name:'Nudności', group:'GI (Mounjaro)'},
+      {id:uid(), name:'Uczucie sytości', group:'GI (Mounjaro)'},
+      {id:uid(), name:'Zaparcia', group:'GI (Mounjaro)'},
+      {id:uid(), name:'Biegunka', group:'GI (Mounjaro)'},
+      {id:uid(), name:'Kichanie', group:'Alergie'},
+      {id:uid(), name:'Katar', group:'Alergie'},
+      {id:uid(), name:'Zatkany nos', group:'Alergie'},
+      {id:uid(), name:'Świąd oczu', group:'Alergie'},
+      {id:uid(), name:'Senność dzienna', group:'Sen'},
+      {id:uid(), name:'Wybudzenia nocne', group:'Sen'},
+    ],
+    activities:[
+      {id:uid(), name:'Trening / aktywność fizyczna'},
+      {id:uid(), name:'Alkohol'},
+      {id:uid(), name:'Zdarzenie stresowe'},
+      {id:uid(), name:'Nietypowy dzień / podróż'},
+    ],
+  };
+}
+
+function emptyDayLog(){
+  return { drinks:[], bowel:[], meds:[], symptoms:[], mood:[], activities:[], sleep:null, notes:[] };
+}
+
+async function loadMonth(monthKey){
+  if(cache.months[monthKey]) return cache.months[monthKey];
+  try{
+    const r = await storageShim.get('month:'+monthKey);
+    cache.months[monthKey] = r ? JSON.parse(r.value) : {};
+  }catch(e){
+    cache.months[monthKey] = {};
+  }
+  return cache.months[monthKey];
+}
+async function saveMonth(monthKey, data){
+  cache.months[monthKey] = data;
+  try{
+    await storageShim.set('month:'+monthKey, JSON.stringify(data));
+  }catch(e){
+    toast('Nie udało się zapisać (pamięć przeglądarki pełna?).');
+    throw e;
+  }
+}
+async function getDayLog(dateStr){
+  const mk = monthKeyOf(dateStr);
+  const month = await loadMonth(mk);
+  const dk = dayOfMonthKey(dateStr);
+  if(!month[dk]) month[dk] = emptyDayLog();
+  // backward-safety: ensure all arrays exist
+  const dl = month[dk];
+  ['drinks','bowel','meds','symptoms','mood','activities','notes'].forEach(k=>{ if(!dl[k]) dl[k]=[]; });
+  return dl;
+}
+async function mutateDay(dateStr, fn){
+  const mk = monthKeyOf(dateStr);
+  const month = await loadMonth(mk);
+  const dk = dayOfMonthKey(dateStr);
+  if(!month[dk]) month[dk] = emptyDayLog();
+  fn(month[dk]);
+  await saveMonth(mk, month);
+  return month[dk];
+}
+async function getRangeDays(startStr, endStr){
+  // returns array of {date, log} inclusive, oldest first
+  const out = [];
+  const monthsNeeded = new Set();
+  let cur = startStr;
+  while(cur <= endStr){ monthsNeeded.add(monthKeyOf(cur)); cur = addDays(cur,1); }
+  const loaded = {};
+  for(const mk of monthsNeeded) loaded[mk] = await loadMonth(mk);
+  cur = startStr;
+  while(cur <= endStr){
+    const mk = monthKeyOf(cur), dk = dayOfMonthKey(cur);
+    const log = (loaded[mk] && loaded[mk][dk]) ? loaded[mk][dk] : emptyDayLog();
+    out.push({date:cur, log});
+    cur = addDays(cur,1);
+  }
+  return out;
+}
+
+// ---------- effective "today" (respects day-boundary hour) ----------
+function effectiveDateStr(cfg){
+  const now = new Date();
+  const boundary = cfg.dayBoundaryHour ?? 4;
+  if(now.getHours() < boundary){
+    const y = new Date(now); y.setDate(y.getDate()-1);
+    return fmtDate(y);
+  }
+  return fmtDate(now);
+}
+
+// ---------- app state ----------
+const state = {
+  view:'dashboard',        // dashboard | history | stats | settings
+  selectedDate:null,       // for dashboard/history
+  cfg:null,
+  statsRange:30,
+  settingsTab:'meds',
+};
+
+// ============================= RENDER: SHELL =============================
+async function boot(){
+  state.cfg = await loadConfig();
+  state.selectedDate = effectiveDateStr(state.cfg);
+  renderTabbar();
+  await render();
+  // Re-check day boundary every few minutes in case app stays open past midnight/boundary
+  setInterval(async ()=>{
+    const eff = effectiveDateStr(state.cfg);
+    if(state.view==='dashboard' && state.selectedDate===state._autoDate){
+      state.selectedDate = eff; state._autoDate = eff; await render();
+    }
+  }, 5*60*1000);
+  state._autoDate = state.selectedDate;
+}
+
+function renderTabbar(){
+  const tabs = [
+    {id:'dashboard', ic:'●', lb:'Dziś'},
+    {id:'history', ic:'▤', lb:'Historia'},
+    {id:'stats', ic:'▲', lb:'Statystyki'},
+    {id:'settings', ic:'⚙', lb:'Ustawienia'},
+  ];
+  const nav = $('#tabbar');
+  nav.innerHTML = tabs.map(t=>`
+    <button data-tab="${t.id}" class="${state.view===t.id?'active':''}">
+      <span class="ic">${t.ic}</span><span>${t.lb}</span>
+    </button>`).join('');
+  $$('#tabbar button').forEach(b=>b.onclick=async ()=>{
+    state.view = b.dataset.tab;
+    if(state.view==='dashboard') state.selectedDate = effectiveDateStr(state.cfg);
+    renderTabbar();
+    await render();
+  });
+}
+
+async function render(){
+  const app = $('#app');
+  if(state.view==='dashboard') app.innerHTML = await viewDashboard();
+  else if(state.view==='history') app.innerHTML = await viewHistory();
+  else if(state.view==='stats') app.innerHTML = await viewStats();
+  else if(state.view==='settings') app.innerHTML = await viewSettings();
+  wireCurrentView();
+}
+
+</script>
+<script>
+/* =========================================================================
+   PART 2 — modal/sheet helper, formatting helpers for icons/labels
+   ========================================================================= */
+
+function openSheet(html, onMount){
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="sheet">
+      <button class="sheet-close" data-close>✕</button>
+      <div class="sheet-handle"></div>
+      ${html}
+    </div>`;
+  ov.addEventListener('click', (e)=>{ if(e.target===ov) closeSheet(); });
+  ov.querySelector('[data-close]').onclick = closeSheet;
+  document.body.appendChild(ov);
+  state._sheet = ov;
+  if(onMount) onMount(ov);
+  return ov;
+}
+function closeSheet(){
+  if(state._sheet){ state._sheet.remove(); state._sheet=null; }
+}
+
+function drinkIcon(id){ const d=(state.cfg.drinkTypes||[]).find(x=>x.id===id); return d? d.icon||'🥤' : '🥤'; }
+function drinkName(id){ const d=(state.cfg.drinkTypes||[]).find(x=>x.id===id); return d? d.name : id; }
+function medById(id){ return (state.cfg.medications||[]).find(m=>m.id===id); }
+function symById(id){ return (state.cfg.symptoms||[]).find(s=>s.id===id); }
+function actById(id){ return (state.cfg.activities||[]).find(a=>a.id===id); }
+
+function fmtDateHeader(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y,m-1,d);
+  const isToday = dateStr === effectiveDateStr(state.cfg);
+  const label = `${d} ${MONTHS_PL[m-1]}`;
+  const sub = isToday ? 'dziś · '+DOW_PL[dt.getDay()] : DOW_PL[dt.getDay()];
+  return {label, sub, isToday};
+}
+</script>
+<script>
+/* =========================================================================
+   PART 3 — DASHBOARD VIEW
+   ========================================================================= */
+
+async function viewDashboard(){
+  const date = state.selectedDate;
+  const dl = await getDayLog(date);
+  const {label, sub, isToday} = fmtDateHeader(date);
+  const cfg = state.cfg;
+
+  const drinksHtml = (cfg.drinkTypes||[]).map(dt=>{
+    const cnt = dl.drinks.filter(x=>x.type===dt.id).length;
+    return `<button class="qbtn ${cnt?'on':''}" data-act="drink" data-id="${dt.id}">
+      ${cnt?`<span class="count">${cnt}</span>`:''}
+      <span class="ic">${dt.icon||'🥤'}</span>
+      <span class="lb">${dt.name}</span>
+    </button>`;
+  }).join('') + `<button class="qbtn" data-act="drink-custom">
+      <span class="ic">➕</span><span class="lb">Inny / ml</span>
+    </button>`;
+
+  const bowelCnt = dl.bowel.length;
+  const notesCnt = dl.notes.length;
+
+  const activeMeds = (cfg.medications||[]).filter(m=>m.active!==false);
+  const medsHtml = activeMeds.length ? `<div class="list">${activeMeds.map(m=>{
+      const takenToday = dl.meds.filter(x=>x.medId===m.id);
+      const done = takenToday.length>0;
+      return `<div class="row">
+        <div>
+          <div style="font-size:14.5px;${done?'':'color:var(--text);'}">${escapeHtml(m.name)}</div>
+          <div class="note-chip">${escapeHtml(m.dose||'')}${m.dose&&m.schedule?' · ':''}${escapeHtml(m.schedule||'')}${done?` · wzięte ${takenToday.map(t=>t.time).join(', ')}`:''}</div>
+        </div>
+        <button class="qbtn ${done?'on':''}" style="min-height:0;padding:9px 12px;flex-direction:row;gap:6px;" data-act="med" data-id="${m.id}">
+          <span class="ic" style="font-size:16px;">${done?'✓':'○'}</span><span class="lb" style="font-size:12px;">${done?'wzięte':'weź'}</span>
+        </button>
+      </div>`;
+    }).join('')}</div>`
+    : `<div class="empty">Brak zdefiniowanych leków.<br><button class="btn secondary sm" data-act="goto-settings-meds">Dodaj leki w Ustawieniach</button></div>`;
+
+  const moodEntries = dl.mood.slice().sort((a,b)=>a.time.localeCompare(b.time));
+  const moodHtml = moodEntries.length ? `<div class="list">${moodEntries.map((e,i)=>`
+      <div class="row">
+        <div style="font-size:13px;color:var(--muted);width:44px;">${e.time}</div>
+        <div style="flex:1;display:flex;gap:10px;font-size:12.5px;color:var(--text);">
+          <span>😊 ${e.mood}</span><span>⚡ ${e.energy}</span><span>🎯 ${e.focus}</span><span>📈 ${e.productivity}</span>
+        </div>
+        <button class="swipe-del" data-act="del-mood" data-idx="${i}">✕</button>
+      </div>`).join('')}</div>` : '';
+
+  const symToday = dl.symptoms.slice().sort((a,b)=>b.time.localeCompare(a.time));
+  const symHtml = symToday.length ? `<div class="list">${symToday.map((e,i)=>{
+      const s = symById(e.symptomId);
+      const sevLabel = ['','łagodny','umiarkowany','silny'][e.severity]||'';
+      return `<div class="row">
+        <div style="font-size:14px;">${escapeHtml(s?s.name:'?')} <span class="note-chip">${sevLabel} · ${e.time}</span></div>
+        <button class="swipe-del" data-act="del-symptom" data-idx="${i}">✕</button>
+      </div>`;
+    }).join('')}</div>` : '';
+
+  const actToday = dl.activities.slice().sort((a,b)=>b.time.localeCompare(a.time));
+  const actHtml = actToday.length ? `<div class="list">${actToday.map((e,i)=>{
+      const a = actById(e.activityId);
+      return `<div class="row">
+        <div style="font-size:14px;">${escapeHtml(a?a.name:'?')} <span class="note-chip">${e.time}${e.note?' · '+escapeHtml(e.note):''}</span></div>
+        <button class="swipe-del" data-act="del-activity" data-idx="${i}">✕</button>
+      </div>`;
+    }).join('')}</div>` : '';
+
+  const sleepHtml = dl.sleep ? `<div class="row" style="padding:12px 2px;">
+      <div style="font-size:14px;">Jakość snu: <b style="color:var(--accent)">${dl.sleep.quality}/10</b>${dl.sleep.note?` <span class="note-chip">${escapeHtml(dl.sleep.note)}</span>`:''}</div>
+      <button class="btn ghost sm" data-act="sleep">edytuj</button>
+    </div>` : `<button class="btn secondary sm" data-act="sleep" style="width:100%;">+ Dodaj jakość snu (ostatnia noc)</button>`;
+
+  return `
+    <div class="topbar">
+      <div class="date-nav">
+        <button data-act="prev-day">‹</button>
+        <div>
+          <div class="date-label">${label}</div>
+          <div class="date-sub">${sub}</div>
+        </div>
+        <button data-act="next-day" ${isToday?'style="visibility:hidden"':''}>›</button>
+      </div>
+      <div class="brand">Dziennik Zdrowia</div>
+    </div>
+
+    <section class="block">
+      <div class="block-head"><h2>Napoje</h2></div>
+      <div class="quick-grid">${drinksHtml}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Ciało</h2></div>
+      <div class="quick-grid cols-2">
+        <button class="qbtn ${bowelCnt?'on':''}" data-act="bowel">
+          ${bowelCnt?`<span class="count">${bowelCnt}</span>`:''}
+          <span class="ic">🚽</span><span class="lb">Wypróżnienie</span>
+        </button>
+        <button class="qbtn" data-act="note">
+          ${notesCnt?`<span class="count">${notesCnt}</span>`:''}
+          <span class="ic">✎</span><span class="lb">Notatka</span>
+        </button>
+      </div>
+      <div style="margin-top:10px;">${sleepHtml}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Leki</h2>
+        <button class="link" data-act="goto-settings-meds">edytuj</button>
+      </div>
+      ${medsHtml}
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Nastrój · energia · fokus</h2>
+        <button class="link" data-act="add-mood">+ dodaj</button>
+      </div>
+      ${moodHtml || '<div class="empty">Jeszcze nic dziś nie zapisano.</div>'}
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Objawy</h2>
+        <button class="link" data-act="add-symptom">+ dodaj</button>
+      </div>
+      ${symHtml || '<div class="empty">Brak zgłoszonych objawów.</div>'}
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Aktywności / zdarzenia</h2>
+        <button class="link" data-act="add-activity">+ dodaj</button>
+      </div>
+      ${actHtml || '<div class="empty">Brak wpisów.</div>'}
+    </section>
+  `;
+}
+
+function escapeHtml(s){
+  return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function wireDashboard(){
+  const date = state.selectedDate;
+
+  $$('[data-act="drink"]').forEach(b=>b.onclick=async ()=>{
+    const dt = cfgDrinkType(b.dataset.id);
+    await mutateDay(date, dl=>dl.drinks.push({id:uid(), type:dt.id, ml:dt.defaultMl, time:nowTime()}));
+    toast(`${dt.icon} ${dt.name} +${dt.defaultMl}ml`);
+    await render();
+  });
+  const dc = $('[data-act="drink-custom"]');
+  if(dc) dc.onclick = ()=>openDrinkCustomSheet(date);
+
+  const bowelBtn = $('[data-act="bowel"]');
+  if(bowelBtn) bowelBtn.onclick = ()=>openBowelSheet(date);
+
+  const noteBtn = $('[data-act="note"]');
+  if(noteBtn) noteBtn.onclick = ()=>openNoteSheet(date);
+
+  const sleepBtn = $('[data-act="sleep"]');
+  if(sleepBtn) sleepBtn.onclick = ()=>openSleepSheet(date);
+
+  $$('[data-act="med"]').forEach(b=>b.onclick=async ()=>{
+    const m = medById(b.dataset.id);
+    await mutateDay(date, dl=>dl.meds.push({id:uid(), medId:m.id, time:nowTime()}));
+    toast(`${m.name} — odnotowano`);
+    await render();
+  });
+
+  $$('[data-act="goto-settings-meds"]').forEach(b=>b.onclick=async ()=>{
+    state.view='settings'; state.settingsTab='meds'; renderTabbar(); await render();
+  });
+
+  const addMood = $('[data-act="add-mood"]');
+  if(addMood) addMood.onclick = ()=>openMoodSheet(date);
+
+  const addSym = $('[data-act="add-symptom"]');
+  if(addSym) addSym.onclick = ()=>openSymptomSheet(date);
+
+  const addAct = $('[data-act="add-activity"]');
+  if(addAct) addAct.onclick = ()=>openActivitySheet(date);
+
+  $$('[data-act="del-mood"]').forEach(b=>b.onclick=async ()=>{
+    await mutateDay(date, dl=>dl.mood.splice(Number(b.dataset.idx),1));
+    await render();
+  });
+  $$('[data-act="del-symptom"]').forEach(b=>b.onclick=async ()=>{
+    const sorted = (await getDayLog(date)).symptoms.slice().sort((a,b2)=>b2.time.localeCompare(a.time));
+    const target = sorted[Number(b.dataset.idx)];
+    await mutateDay(date, dl=>{ const i=dl.symptoms.findIndex(x=>x.id===target.id); if(i>-1) dl.symptoms.splice(i,1); });
+    await render();
+  });
+  $$('[data-act="del-activity"]').forEach(b=>b.onclick=async ()=>{
+    const sorted = (await getDayLog(date)).activities.slice().sort((a,b2)=>b2.time.localeCompare(a.time));
+    const target = sorted[Number(b.dataset.idx)];
+    await mutateDay(date, dl=>{ const i=dl.activities.findIndex(x=>x.id===target.id); if(i>-1) dl.activities.splice(i,1); });
+    await render();
+  });
+
+  const prev = $('[data-act="prev-day"]');
+  if(prev) prev.onclick = async ()=>{ state.selectedDate = addDays(state.selectedDate,-1); await render(); };
+  const next = $('[data-act="next-day"]');
+  if(next) next.onclick = async ()=>{
+    const eff = effectiveDateStr(state.cfg);
+    if(state.selectedDate < eff){ state.selectedDate = addDays(state.selectedDate,1); await render(); }
+  };
+}
+
+function cfgDrinkType(id){ return (state.cfg.drinkTypes||[]).find(d=>d.id===id) || {id, name:id, defaultMl:200, icon:'🥤'}; }
+
+// ---- sheets used from dashboard ----
+function openDrinkCustomSheet(date){
+  const types = state.cfg.drinkTypes||[];
+  openSheet(`
+    <h3>Napój</h3><div class="sub">Wybierz rodzaj i ilość</div>
+    <div class="tag-grid" id="dt-pick">${types.map(t=>`<button class="tagbtn" data-id="${t.id}">${t.icon} ${t.name}</button>`).join('')}
+      <button class="tagbtn" data-id="__custom">➕ inny</button></div>
+    <div id="dt-custom-name" style="display:none;">
+      <label class="field-label">Nazwa</label><input type="text" id="dt-name" placeholder="np. Sok pomarańczowy">
+    </div>
+    <label class="field-label">Ilość (ml)</label>
+    <input type="number" id="dt-ml" value="200" min="0" step="10">
+    <div style="margin-top:16px;"><button class="btn" id="dt-save">Zapisz</button></div>
+  `, (ov)=>{
+    let chosen = null;
+    ov.querySelectorAll('#dt-pick button').forEach(b=>b.onclick=()=>{
+      ov.querySelectorAll('#dt-pick button').forEach(x=>x.style.borderColor='var(--line)');
+      b.style.borderColor='var(--accent)';
+      chosen = b.dataset.id;
+      ov.querySelector('#dt-custom-name').style.display = chosen==='__custom' ? 'block' : 'none';
+      if(chosen!=='__custom'){
+        const t = types.find(x=>x.id===chosen);
+        if(t) ov.querySelector('#dt-ml').value = t.defaultMl;
+      }
+    });
+    ov.querySelector('#dt-save').onclick = async ()=>{
+      if(!chosen){ toast('Wybierz rodzaj napoju'); return; }
+      const ml = Number(ov.querySelector('#dt-ml').value)||0;
+      let typeId = chosen, label=null;
+      if(chosen==='__custom'){
+        label = ov.querySelector('#dt-name').value.trim() || 'Inny';
+        typeId = 'other';
+      }
+      await mutateDay(date, dl=>dl.drinks.push({id:uid(), type:typeId, label, ml, time:nowTime()}));
+      closeSheet(); toast('Zapisano napój'); await render();
+    };
+  });
+}
+
+function openBowelSheet(date){
+  openSheet(`
+    <h3>Wypróżnienie</h3><div class="sub">Skala Bristol (opcjonalnie)</div>
+    <div class="tag-grid" id="bristol-pick">
+      ${[1,2,3,4,5,6,7].map(n=>`<button class="tagbtn small" data-v="${n}">${n}</button>`).join('')}
+    </div>
+    <label class="field-label">Notatka (opcjonalnie)</label>
+    <input type="text" id="bowel-note" placeholder="np. po kawie">
+    <div style="margin-top:16px;"><button class="btn" id="bowel-save">Zapisz</button></div>
+  `, (ov)=>{
+    let bristol=null;
+    ov.querySelectorAll('#bristol-pick button').forEach(b=>b.onclick=()=>{
+      ov.querySelectorAll('#bristol-pick button').forEach(x=>x.style.borderColor='var(--line)');
+      b.style.borderColor='var(--accent)'; bristol=Number(b.dataset.v);
+    });
+    ov.querySelector('#bowel-save').onclick = async ()=>{
+      const note = ov.querySelector('#bowel-note').value.trim();
+      await mutateDay(date, dl=>dl.bowel.push({id:uid(), bristol, note:note||null, time:nowTime()}));
+      closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+
+function openNoteSheet(date){
+  openSheet(`
+    <h3>Notatka</h3><div class="sub">Cokolwiek wartego zapisania dziś</div>
+    <textarea id="note-txt" placeholder="Wpisz notatkę…"></textarea>
+    <div style="margin-top:16px;"><button class="btn" id="note-save">Zapisz</button></div>
+  `, (ov)=>{
+    ov.querySelector('#note-save').onclick = async ()=>{
+      const txt = ov.querySelector('#note-txt').value.trim();
+      if(!txt){ closeSheet(); return; }
+      await mutateDay(date, dl=>dl.notes.push({id:uid(), text:txt, time:nowTime()}));
+      closeSheet(); toast('Zapisano notatkę'); await render();
+    };
+  });
+}
+
+function openSleepSheet(date){
+  openSheet(`
+    <h3>Jakość snu</h3><div class="sub">Ostatnia noc</div>
+    <div class="slider-row">
+      <div class="row"><label>Jakość</label><span class="val" id="sl-val">6</span></div>
+      <input type="range" id="sl-q" min="1" max="10" value="6">
+    </div>
+    <label class="field-label">Notatka (opcjonalnie)</label>
+    <input type="text" id="sl-note" placeholder="np. wybudzenia w nocy">
+    <div style="margin-top:16px;"><button class="btn" id="sl-save">Zapisz</button></div>
+  `, async (ov)=>{
+    const dl = await getDayLog(date);
+    if(dl.sleep){ ov.querySelector('#sl-q').value = dl.sleep.quality; ov.querySelector('#sl-val').textContent = dl.sleep.quality; ov.querySelector('#sl-note').value = dl.sleep.note||''; }
+    ov.querySelector('#sl-q').oninput = e=>ov.querySelector('#sl-val').textContent = e.target.value;
+    ov.querySelector('#sl-save').onclick = async ()=>{
+      const quality = Number(ov.querySelector('#sl-q').value);
+      const note = ov.querySelector('#sl-note').value.trim();
+      await mutateDay(date, d=>{ d.sleep = {quality, note: note||null}; });
+      closeSheet(); toast('Zapisano sen'); await render();
+    };
+  });
+}
+
+function openMoodSheet(date){
+  const dims = [
+    {k:'mood', ic:'😊', lb:'Nastrój'},
+    {k:'energy', ic:'⚡', lb:'Energia'},
+    {k:'focus', ic:'🎯', lb:'Fokus'},
+    {k:'productivity', ic:'📈', lb:'Produktywność'},
+  ];
+  openSheet(`
+    <h3>Nastrój / energia / fokus</h3><div class="sub">${nowTime()} · możesz dodać wiele wpisów dziennie</div>
+    ${dims.map(d=>`
+      <div class="slider-row">
+        <div class="row"><label>${d.ic} ${d.lb}</label><span class="val" id="mv-${d.k}">5</span></div>
+        <input type="range" id="ms-${d.k}" min="1" max="10" value="5">
+      </div>`).join('')}
+    <label class="field-label">Notatka (opcjonalnie)</label>
+    <input type="text" id="mood-note" placeholder="kontekst, wyzwalacz…">
+    <div style="margin-top:16px;"><button class="btn" id="mood-save">Zapisz</button></div>
+  `, (ov)=>{
+    dims.forEach(d=>{
+      ov.querySelector('#ms-'+d.k).oninput = e=>ov.querySelector('#mv-'+d.k).textContent = e.target.value;
+    });
+    ov.querySelector('#mood-save').onclick = async ()=>{
+      const entry = {id:uid(), time:nowTime(), note: ov.querySelector('#mood-note').value.trim()||null};
+      dims.forEach(d=> entry[d.k] = Number(ov.querySelector('#ms-'+d.k).value));
+      await mutateDay(date, dl=>dl.mood.push(entry));
+      closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+
+function openSymptomSheet(date){
+  const groups = {};
+  (state.cfg.symptoms||[]).forEach(s=>{ (groups[s.group||'Inne']=groups[s.group||'Inne']||[]).push(s); });
+  const groupsHtml = Object.keys(groups).map(g=>`
+    <div style="margin-top:12px;">
+      <label class="field-label" style="margin-top:0;">${escapeHtml(g)}</label>
+      <div class="tag-grid">${groups[g].map(s=>`<button class="tagbtn small" data-id="${s.id}">${escapeHtml(s.name)}</button>`).join('')}</div>
+    </div>`).join('');
+  openSheet(`
+    <h3>Dodaj objaw</h3><div class="sub">Wybierz objaw, potem nasilenie</div>
+    ${groupsHtml || '<div class="empty">Brak zdefiniowanych objawów — dodaj je w Ustawieniach.</div>'}
+    <div id="sev-block" style="display:none;margin-top:16px;">
+      <label class="field-label">Nasilenie</label>
+      <div class="tag-grid" id="sev-pick">
+        <button class="tagbtn" data-v="1">łagodny</button>
+        <button class="tagbtn" data-v="2">umiarkowany</button>
+        <button class="tagbtn" data-v="3">silny</button>
+      </div>
+      <label class="field-label">Notatka (opcjonalnie)</label>
+      <input type="text" id="sym-note">
+      <div style="margin-top:16px;"><button class="btn" id="sym-save">Zapisz</button></div>
+    </div>
+  `, (ov)=>{
+    let symptomId=null, severity=2;
+    ov.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{
+      ov.querySelectorAll('[data-id]').forEach(x=>x.style.borderColor='var(--line)');
+      b.style.borderColor='var(--accent)';
+      symptomId = b.dataset.id;
+      ov.querySelector('#sev-block').style.display='block';
+    });
+    ov.querySelectorAll('#sev-pick button').forEach(b=>b.onclick=()=>{
+      ov.querySelectorAll('#sev-pick button').forEach(x=>x.style.borderColor='var(--line)');
+      b.style.borderColor='var(--accent)'; severity=Number(b.dataset.v);
+    });
+    ov.querySelector('#sym-save').onclick = async ()=>{
+      if(!symptomId) return;
+      const note = ov.querySelector('#sym-note').value.trim();
+      await mutateDay(date, dl=>dl.symptoms.push({id:uid(), symptomId, severity, note:note||null, time:nowTime()}));
+      closeSheet(); toast('Zapisano objaw'); await render();
+    };
+  });
+}
+
+function openActivitySheet(date){
+  const acts = state.cfg.activities||[];
+  openSheet(`
+    <h3>Dodaj aktywność / zdarzenie</h3>
+    <div class="tag-grid" id="act-pick">${acts.map(a=>`<button class="tagbtn" data-id="${a.id}">${escapeHtml(a.name)}</button>`).join('') || ''}</div>
+    ${acts.length?'':'<div class="empty">Brak zdefiniowanych — dodaj w Ustawieniach.</div>'}
+    <label class="field-label">Notatka (opcjonalnie)</label>
+    <input type="text" id="act-note">
+    <div style="margin-top:16px;"><button class="btn" id="act-save">Zapisz</button></div>
+  `, (ov)=>{
+    let activityId=null;
+    ov.querySelectorAll('#act-pick button').forEach(b=>b.onclick=()=>{
+      ov.querySelectorAll('#act-pick button').forEach(x=>x.style.borderColor='var(--line)');
+      b.style.borderColor='var(--accent)'; activityId=b.dataset.id;
+    });
+    ov.querySelector('#act-save').onclick = async ()=>{
+      if(!activityId){ toast('Wybierz aktywność'); return; }
+      const note = ov.querySelector('#act-note').value.trim();
+      await mutateDay(date, dl=>dl.activities.push({id:uid(), activityId, note:note||null, time:nowTime()}));
+      closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+</script>
+<script>
+/* =========================================================================
+   PART 4 — HISTORY VIEW (browse by month, tap a day to open it in Dashboard)
+   ========================================================================= */
+
+function daySummaryChips(dl){
+  const chips = [];
+  if(dl.drinks.length){
+    const coffee = dl.drinks.filter(d=>d.type==='coffee').length;
+    if(coffee) chips.push(`☕${coffee}`);
+    const water = dl.drinks.filter(d=>d.type==='water').length;
+    if(water) chips.push(`💧${water}`);
+  }
+  if(dl.bowel.length) chips.push(`🚽${dl.bowel.length}`);
+  if(dl.mood.length){
+    const avg = Math.round(dl.mood.reduce((s,m)=>s+m.mood,0)/dl.mood.length);
+    chips.push(`😊${avg}`);
+  }
+  if(dl.symptoms.length) chips.push(`⚠${dl.symptoms.length}`);
+  if(dl.sleep) chips.push(`🌙${dl.sleep.quality}`);
+  if(dl.meds.length) chips.push(`💊${dl.meds.length}`);
+  return chips;
+}
+
+async function viewHistory(){
+  if(!state.historyMonth) state.historyMonth = monthKeyOf(effectiveDateStr(state.cfg));
+  const mk = state.historyMonth;
+  const [y,m] = mk.split('-').map(Number);
+  const monthData = await loadMonth(mk);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const todayStr = effectiveDateStr(state.cfg);
+  const isCurrentMonth = mk === monthKeyOf(todayStr);
+  const lastDay = isCurrentMonth ? Number(todayStr.slice(8,10)) : daysInMonth;
+
+  let rows = '';
+  for(let d=lastDay; d>=1; d--){
+    const dk = pad2(d);
+    const dateStr = `${mk}-${dk}`;
+    const dl = monthData[dk] || null;
+    const dt = new Date(y, m-1, d);
+    const chips = dl ? daySummaryChips(dl) : [];
+    const hasData = dl && chips.length>0;
+    rows += `<div class="row" data-open="${dateStr}" style="cursor:pointer;padding:12px 2px;">
+        <div>
+          <div style="font-size:14px;">${d} ${MONTHS_PL[m-1]} <span class="note-chip">${DOW_PL[dt.getDay()]}</span></div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%;">
+          ${hasData ? chips.map(c=>`<span class="pill">${c}</span>`).join('') : '<span class="note-chip">brak wpisów</span>'}
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="topbar">
+      <div class="date-nav">
+        <button data-act="prev-month">‹</button>
+        <div class="date-label">${MONTHS_PL[m-1][0].toUpperCase()+MONTHS_PL[m-1].slice(1)} ${y}</div>
+        <button data-act="next-month" ${isCurrentMonth?'style="visibility:hidden"':''}>›</button>
+      </div>
+      <div class="brand">Historia</div>
+    </div>
+    <section class="block">
+      <div class="list">${rows}</div>
+    </section>
+  `;
+}
+
+function wireHistory(){
+  $$('[data-open]').forEach(r=>r.onclick=async ()=>{
+    state.selectedDate = r.dataset.open;
+    state.view = 'dashboard';
+    renderTabbar();
+    await render();
+  });
+  const prev = $('[data-act="prev-month"]');
+  if(prev) prev.onclick = async ()=>{
+    const [y,m] = state.historyMonth.split('-').map(Number);
+    const d = new Date(y, m-2, 1);
+    state.historyMonth = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
+    await render();
+  };
+  const next = $('[data-act="next-month"]');
+  if(next) next.onclick = async ()=>{
+    const [y,m] = state.historyMonth.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    const nk = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
+    if(nk <= monthKeyOf(effectiveDateStr(state.cfg))){ state.historyMonth = nk; await render(); }
+  };
+}
+</script>
+<script>
+/* =========================================================================
+   PART 5 — STATS VIEW (aggregates, SVG charts, correlations)
+   No AI involved here — plain arithmetic, computed locally in the browser.
+   ========================================================================= */
+
+function dailyAggregate(days){
+  return days.map(({date, log})=>{
+    const moodAvg = log.mood.length ? avg(log.mood.map(m=>m.mood)) : null;
+    const energyAvg = log.mood.length ? avg(log.mood.map(m=>m.energy)) : null;
+    const focusAvg = log.mood.length ? avg(log.mood.map(m=>m.focus)) : null;
+    const prodAvg = log.mood.length ? avg(log.mood.map(m=>m.productivity)) : null;
+    const sleepQuality = log.sleep ? log.sleep.quality : null;
+    const coffeeCount = log.drinks.filter(d=>d.type==='coffee').length;
+    const waterMl = log.drinks.filter(d=>d.type==='water').reduce((s,d)=>s+(d.ml||0),0);
+    const bowelCount = log.bowel.length;
+    const symptomCount = log.symptoms.length;
+    const medsCount = log.meds.length;
+    const hasExercise = log.activities.some(a=>{ const act=actById(a.activityId); return act && /trening|aktywność/i.test(act.name); });
+    const hasAlcohol = log.activities.some(a=>{ const act=actById(a.activityId); return act && /alkohol/i.test(act.name); });
+    return {date, moodAvg, energyAvg, focusAvg, prodAvg, sleepQuality, coffeeCount, waterMl, bowelCount,
+             symptomCount, medsCount, hasExerciseNum: hasExercise?1:0, hasAlcoholNum: hasAlcohol?1:0};
+  });
+}
+function avg(arr){ return arr.reduce((s,x)=>s+x,0)/arr.length; }
+
+function pearson(xs, ys){
+  const n = xs.length;
+  if(n<5) return null;
+  const mx = avg(xs), my = avg(ys);
+  let num=0, dx2=0, dy2=0;
+  for(let i=0;i<n;i++){ const dx=xs[i]-mx, dy=ys[i]-my; num += dx*dy; dx2 += dx*dx; dy2 += dy*dy; }
+  if(dx2===0 || dy2===0) return null;
+  return num / Math.sqrt(dx2*dy2);
+}
+function pairedSeries(agg, keyA, keyB){
+  const xs=[], ys=[];
+  agg.forEach(d=>{ if(d[keyA]!=null && d[keyB]!=null){ xs.push(d[keyA]); ys.push(d[keyB]); } });
+  return {xs, ys, n:xs.length};
+}
+
+const CORR_PAIRS = [
+  ['sleepQuality','moodAvg','Sen ↔ Nastrój'],
+  ['sleepQuality','energyAvg','Sen ↔ Energia'],
+  ['coffeeCount','energyAvg','Kawa ↔ Energia'],
+  ['coffeeCount','moodAvg','Kawa ↔ Nastrój'],
+  ['symptomCount','moodAvg','Objawy ↔ Nastrój'],
+  ['symptomCount','energyAvg','Objawy ↔ Energia'],
+  ['sleepQuality','symptomCount','Sen ↔ Objawy'],
+  ['hasExerciseNum','moodAvg','Trening ↔ Nastrój'],
+  ['hasAlcoholNum','sleepQuality','Alkohol ↔ Sen (ta sama noc)'],
+  ['bowelCount','moodAvg','Wypróżnienia ↔ Nastrój'],
+];
+
+// ---- tiny SVG chart helpers ----
+function svgMultiLine(agg, seriesDefs, opts={}){
+  const W = opts.width||320, H = opts.height||140, pad=18;
+  const n = agg.length;
+  if(n<2) return `<div class="empty">Za mało danych do wykresu.</div>`;
+  const minY = opts.minY??1, maxY = opts.maxY??10;
+  const xStep = (W-2*pad)/(n-1);
+  const yFor = v => H-pad - ((v-minY)/(maxY-minY))*(H-2*pad);
+  const xFor = i => pad + i*xStep;
+
+  let gridLines = '';
+  for(let g=minY; g<=maxY; g+= (maxY-minY)/4){
+    const y = yFor(g);
+    gridLines += `<line x1="${pad}" y1="${y}" x2="${W-pad}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+  }
+
+  let paths = '';
+  seriesDefs.forEach(sd=>{
+    let d=''; let started=false;
+    agg.forEach((row,i)=>{
+      const v = row[sd.key];
+      if(v==null){ started=false; return; }
+      const cmd = started? 'L' : 'M';
+      d += `${cmd}${xFor(i).toFixed(1)},${yFor(v).toFixed(1)} `;
+      started = true;
+    });
+    if(d) paths += `<path d="${d.trim()}" fill="none" stroke="${sd.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+  });
+
+  const everyN = Math.max(1, Math.floor(n/5));
+  let xlabels = '';
+  agg.forEach((row,i)=>{
+    if(i%everyN===0 || i===n-1){
+      xlabels += `<text x="${xFor(i)}" y="${H-3}" font-size="9" fill="var(--muted-2)" text-anchor="middle">${row.date.slice(5)}</text>`;
+    }
+  });
+
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${gridLines}${paths}${xlabels}</svg>`;
+}
+
+function svgBars(agg, key, opts={}){
+  const W = opts.width||320, H = opts.height||90, pad=14;
+  const n = agg.length;
+  if(n<1) return '';
+  const vals = agg.map(a=>a[key]||0);
+  const maxV = Math.max(1, ...vals);
+  const bw = (W-2*pad)/n;
+  let bars='';
+  agg.forEach((row,i)=>{
+    const v = row[key]||0;
+    const h = (v/maxV)*(H-2*pad);
+    const x = pad + i*bw + bw*0.15;
+    const y = H-pad-h;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw*0.7).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${opts.color||'var(--accent)'}"/>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${bars}</svg>`;
+}
+
+async function viewStats(){
+  const range = state.statsRange;
+  const today = effectiveDateStr(state.cfg);
+  let startDate;
+  if(range==='all'){
+    let keys=[];
+    try{ const r = await storageShim.list('month:'); keys = r? r.keys : []; }catch(e){ keys=[]; }
+    const monthKeys = keys.map(k=>k.replace('month:','')).sort();
+    startDate = monthKeys.length ? monthKeys[0]+'-01' : today;
+  } else {
+    startDate = addDays(today, -(Number(range)-1));
+  }
+  const days = await getRangeDays(startDate, today);
+  const agg = dailyAggregate(days);
+
+  const withMood = agg.filter(d=>d.moodAvg!=null);
+  const withSleep = agg.filter(d=>d.sleepQuality!=null);
+  const totalCoffee = agg.reduce((s,d)=>s+d.coffeeCount,0);
+  const totalSymptoms = agg.reduce((s,d)=>s+d.symptomCount,0);
+
+  const tiles = [
+    {lb:'Śr. nastrój', val: withMood.length? avg(withMood.map(d=>d.moodAvg)).toFixed(1) : '—'},
+    {lb:'Śr. energia', val: withMood.length? avg(withMood.map(d=>d.energyAvg)).toFixed(1) : '—'},
+    {lb:'Śr. jakość snu', val: withSleep.length? avg(withSleep.map(d=>d.sleepQuality)).toFixed(1) : '—'},
+    {lb:'Kawa / dzień', val: (totalCoffee/agg.length).toFixed(1)},
+    {lb:'Objawy razem', val: totalSymptoms},
+    {lb:'Dni z wpisem', val: `${agg.filter(d=>d.moodAvg!=null||d.sleepQuality!=null||d.coffeeCount>0).length}/${agg.length}`},
+  ];
+
+  const corrRows = CORR_PAIRS.map(([ka,kb,label])=>{
+    const {xs,ys,n} = pairedSeries(agg, ka, kb);
+    const r = pearson(xs,ys);
+    return {label, r, n};
+  }).filter(c=>c.r!=null).sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
+
+  const corrHtml = corrRows.length ? corrRows.map(c=>{
+    const pct = Math.min(100, Math.abs(c.r)*100);
+    const color = c.r>=0 ? 'var(--teal)' : 'var(--danger)';
+    return `<div class="corr-row">
+        <div class="lbl">${c.label}</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+        <div class="val">${c.r>=0?'+':''}${c.r.toFixed(2)}</div>
+      </div>`;
+  }).join('') : `<div class="empty">Za mało danych do policzenia korelacji (potrzeba ≥5 dni z obiema wartościami).</div>`;
+
+  return `
+    <div class="topbar">
+      <div><div class="date-label">Statystyki</div><div class="date-sub">arytmetyka lokalna, bez AI</div></div>
+    </div>
+
+    <div class="seg" style="margin-bottom:18px;">
+      <button data-range="7" class="${range==7||range=='7'?'active':''}">7 dni</button>
+      <button data-range="30" class="${range==30?'active':''}">30 dni</button>
+      <button data-range="90" class="${range==90?'active':''}">90 dni</button>
+      <button data-range="all" class="${range==='all'?'active':''}">Wszystko</button>
+    </div>
+
+    <section class="block">
+      <div class="stat-grid">${tiles.map(t=>`<div class="stat-tile"><div class="num">${t.val}</div><div class="lb">${t.lb}</div></div>`).join('')}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Nastrój · energia · fokus · produktywność</h2></div>
+      <div class="chart-wrap">
+        ${svgMultiLine(agg, [
+          {key:'moodAvg', color:'#c98a4b'},
+          {key:'energyAvg', color:'#5fa8a0'},
+          {key:'focusAvg', color:'#7fa65c'},
+          {key:'prodAvg', color:'#8b92a0'},
+        ])}
+        <div class="chart-legend">
+          <span><i style="background:#c98a4b"></i>nastrój</span>
+          <span><i style="background:#5fa8a0"></i>energia</span>
+          <span><i style="background:#7fa65c"></i>fokus</span>
+          <span><i style="background:#8b92a0"></i>produktywność</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Jakość snu</h2></div>
+      <div class="chart-wrap">${svgMultiLine(agg, [{key:'sleepQuality', color:'#5fa8a0'}])}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Kawa / dzień</h2></div>
+      <div class="chart-wrap">${svgBars(agg, 'coffeeCount', {color:'#c98a4b'})}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Korelacje (Pearson r)</h2></div>
+      <div class="card">
+        ${corrHtml}
+        <p class="note-chip" style="margin-top:8px;">Korelacja ≠ przyczynowość. To surowa arytmetyka na Twoich danych — do interpretacji z pełnym kontekstem medycznym lepiej nadaje się rozmowa w projekcie (eksportuj dane w Ustawieniach).</p>
+      </div>
+    </section>
+  `;
+}
+
+function wireStats(){
+  $$('[data-range]').forEach(b=>b.onclick=async ()=>{
+    const v = b.dataset.range;
+    state.statsRange = v==='all' ? 'all' : Number(v);
+    await render();
+  });
+}
+</script>
+<script>
+/* =========================================================================
+   PART 6 — SETTINGS VIEW (CRUD categories, general, export)
+   ========================================================================= */
+
+async function viewSettings(){
+  const tab = state.settingsTab || 'meds';
+  const tabs = [
+    {id:'meds', lb:'Leki'}, {id:'symptoms', lb:'Objawy'}, {id:'activities', lb:'Aktywności'},
+    {id:'drinks', lb:'Napoje'}, {id:'general', lb:'Ogólne'}, {id:'export', lb:'Eksport'},
+  ];
+  const segHtml = `<div class="seg" style="margin-bottom:18px;flex-wrap:wrap;">${tabs.map(t=>
+    `<button data-stab="${t.id}" class="${tab===t.id?'active':''}" style="flex:0 0 auto;padding:8px 12px;">${t.lb}</button>`).join('')}</div>`;
+
+  let body = '';
+  if(tab==='meds') body = settingsMedsHtml();
+  else if(tab==='symptoms') body = settingsSymptomsHtml();
+  else if(tab==='activities') body = settingsListHtml('activities','Aktywność / zdarzenie');
+  else if(tab==='drinks') body = settingsDrinksHtml();
+  else if(tab==='general') body = settingsGeneralHtml();
+  else if(tab==='export') body = settingsExportHtml();
+
+  return `
+    <div class="topbar"><div class="date-label">Ustawienia</div></div>
+    ${segHtml}
+    ${body}
+  `;
+}
+
+function settingsMedsHtml(){
+  const meds = state.cfg.medications||[];
+  const rows = meds.map(m=>`
+    <div class="row">
+      <div>
+        <div style="font-size:14.5px;">${escapeHtml(m.name)}${m.active===false?' <span class="note-chip">(nieaktywny)</span>':''}</div>
+        <div class="note-chip">${escapeHtml(m.dose||'')}${m.dose&&m.schedule?' · ':''}${escapeHtml(m.schedule||'')}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn ghost sm" data-edit-med="${m.id}">edytuj</button>
+        <button class="swipe-del" data-del-med="${m.id}">✕</button>
+      </div>
+    </div>`).join('');
+  return `<div class="settings-group">
+    <div class="list">${rows || '<div class="empty">Brak leków.</div>'}</div>
+    <div style="margin-top:12px;"><button class="btn secondary" data-add-med="1">+ Dodaj lek / suplement</button></div>
+  </div>`;
+}
+
+function settingsSymptomsHtml(){
+  const syms = state.cfg.symptoms||[];
+  const groups = {};
+  syms.forEach(s=>{ (groups[s.group||'Inne']=groups[s.group||'Inne']||[]).push(s); });
+  const html = Object.keys(groups).map(g=>`
+    <div class="settings-group">
+      <h3>${escapeHtml(g)}</h3>
+      <div class="list">${groups[g].map(s=>`
+        <div class="row">
+          <div style="font-size:14px;">${escapeHtml(s.name)}</div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn ghost sm" data-edit-sym="${s.id}">edytuj</button>
+            <button class="swipe-del" data-del-sym="${s.id}">✕</button>
+          </div>
+        </div>`).join('')}</div>
+    </div>`).join('');
+  return `${html || '<div class="empty">Brak objawów.</div>'}
+    <div style="margin-top:4px;"><button class="btn secondary" data-add-sym="1">+ Dodaj objaw</button></div>`;
+}
+
+function settingsListHtml(catKey, singularLabel){
+  const items = state.cfg[catKey]||[];
+  const rows = items.map(i=>`
+    <div class="row">
+      <div style="font-size:14.5px;">${escapeHtml(i.name)}</div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn ghost sm" data-edit-generic="${catKey}:${i.id}">edytuj</button>
+        <button class="swipe-del" data-del-generic="${catKey}:${i.id}">✕</button>
+      </div>
+    </div>`).join('');
+  return `<div class="settings-group">
+    <div class="list">${rows || `<div class="empty">Brak pozycji.</div>`}</div>
+    <div style="margin-top:12px;"><button class="btn secondary" data-add-generic="${catKey}">+ Dodaj: ${singularLabel}</button></div>
+  </div>`;
+}
+
+function settingsDrinksHtml(){
+  const items = state.cfg.drinkTypes||[];
+  const rows = items.map(i=>`
+    <div class="row">
+      <div style="font-size:14.5px;">${i.icon||'🥤'} ${escapeHtml(i.name)} <span class="note-chip">domyślnie ${i.defaultMl}ml</span></div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn ghost sm" data-edit-drink="${i.id}">edytuj</button>
+        <button class="swipe-del" data-del-drink="${i.id}">✕</button>
+      </div>
+    </div>`).join('');
+  return `<div class="settings-group">
+    <div class="list">${rows || '<div class="empty">Brak napojów.</div>'}</div>
+    <div style="margin-top:12px;"><button class="btn secondary" data-add-drink="1">+ Dodaj napój</button></div>
+  </div>`;
+}
+
+function settingsGeneralHtml(){
+  return `<div class="card">
+    <label class="field-label" style="margin-top:0;">Granica dnia (godzina)</label>
+    <p class="note-chip" style="margin-bottom:8px;">Wpisy przed tą godziną liczą się jeszcze do poprzedniego dnia — przydatne przy nieregularnym śnie.</p>
+    <input type="number" id="dbh" min="0" max="12" value="${state.cfg.dayBoundaryHour ?? 4}">
+    <div style="margin-top:14px;"><button class="btn" id="dbh-save">Zapisz</button></div>
+  </div>`;
+}
+
+function settingsExportHtml(){
+  return `<div class="card">
+    <label class="field-label" style="margin-top:0;">Zakres eksportu</label>
+    <div class="seg" id="exp-range">
+      <button data-r="7" class="active">7 dni</button>
+      <button data-r="30">30 dni</button>
+      <button data-r="all">Wszystko</button>
+    </div>
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn" id="exp-csv">Eksport CSV</button>
+      <button class="btn secondary" id="exp-md">Eksport Markdown</button>
+    </div>
+    <p class="note-chip" style="margin-top:10px;">Markdown pasuje do formatu tego projektu (nagłówek, tabela, wnioski) — możesz go dołożyć do dokumentacji i poprosić Claude o analizę korelacji z pełną historią medyczną.</p>
+  </div>`;
+}
+
+function wireSettings(){
+  $$('[data-stab]').forEach(b=>b.onclick=async ()=>{ state.settingsTab = b.dataset.stab; await render(); });
+
+  // meds
+  const addMed = $('[data-add-med]'); if(addMed) addMed.onclick = ()=>openMedForm();
+  $$('[data-edit-med]').forEach(b=>b.onclick=()=>openMedForm(medById(b.dataset.editMed)));
+  $$('[data-del-med]').forEach(b=>b.onclick=async ()=>{
+    if(!confirm('Usunąć ten lek?')) return;
+    state.cfg.medications = state.cfg.medications.filter(m=>m.id!==b.dataset.delMed);
+    await saveConfig(state.cfg); await render();
+  });
+
+  // symptoms
+  const addSym = $('[data-add-sym]'); if(addSym) addSym.onclick = ()=>openSymptomForm();
+  $$('[data-edit-sym]').forEach(b=>b.onclick=()=>openSymptomForm(symById(b.dataset.editSym)));
+  $$('[data-del-sym]').forEach(b=>b.onclick=async ()=>{
+    if(!confirm('Usunąć ten objaw?')) return;
+    state.cfg.symptoms = state.cfg.symptoms.filter(s=>s.id!==b.dataset.delSym);
+    await saveConfig(state.cfg); await render();
+  });
+
+  // generic (activities)
+  $$('[data-add-generic]').forEach(b=>b.onclick=()=>openGenericForm(b.dataset.addGeneric));
+  $$('[data-edit-generic]').forEach(b=>b.onclick=()=>{
+    const [cat,id] = b.dataset.editGeneric.split(':');
+    const item = (state.cfg[cat]||[]).find(x=>x.id===id);
+    openGenericForm(cat, item);
+  });
+  $$('[data-del-generic]').forEach(b=>b.onclick=async ()=>{
+    const [cat,id] = b.dataset.delGeneric.split(':');
+    if(!confirm('Usunąć?')) return;
+    state.cfg[cat] = state.cfg[cat].filter(x=>x.id!==id);
+    await saveConfig(state.cfg); await render();
+  });
+
+  // drinks
+  const addDrink = $('[data-add-drink]'); if(addDrink) addDrink.onclick = ()=>openDrinkForm();
+  $$('[data-edit-drink]').forEach(b=>b.onclick=()=>openDrinkForm(cfgDrinkType(b.dataset.editDrink)));
+  $$('[data-del-drink]').forEach(b=>b.onclick=async ()=>{
+    if(!confirm('Usunąć ten napój?')) return;
+    state.cfg.drinkTypes = state.cfg.drinkTypes.filter(d=>d.id!==b.dataset.delDrink);
+    await saveConfig(state.cfg); await render();
+  });
+
+  // general
+  const dbhSave = $('#dbh-save');
+  if(dbhSave) dbhSave.onclick = async ()=>{
+    state.cfg.dayBoundaryHour = Number($('#dbh').value)||0;
+    await saveConfig(state.cfg);
+    toast('Zapisano'); state.selectedDate = effectiveDateStr(state.cfg);
+  };
+
+  // export
+  const expRangeBtns = $$('#exp-range button');
+  let expRange = 7;
+  expRangeBtns.forEach(b=>b.onclick=()=>{ expRangeBtns.forEach(x=>x.classList.remove('active')); b.classList.add('active'); expRange = b.dataset.r==='all'?'all':Number(b.dataset.r); });
+  const csvBtn = $('#exp-csv'); if(csvBtn) csvBtn.onclick = ()=>exportData('csv', expRange);
+  const mdBtn = $('#exp-md'); if(mdBtn) mdBtn.onclick = ()=>exportData('md', expRange);
+}
+
+// ---- settings forms (sheets) ----
+function openMedForm(existing){
+  openSheet(`
+    <h3>${existing?'Edytuj lek':'Nowy lek / suplement'}</h3>
+    <label class="field-label" style="margin-top:0;">Nazwa</label>
+    <input type="text" id="f-name" value="${existing?escapeHtml(existing.name):''}" placeholder="np. Depralin">
+    <label class="field-label">Dawka</label>
+    <input type="text" id="f-dose" value="${existing?escapeHtml(existing.dose||''):''}" placeholder="np. 20mg">
+    <label class="field-label">Harmonogram</label>
+    <input type="text" id="f-sched" value="${existing?escapeHtml(existing.schedule||''):''}" placeholder="np. rano, codziennie">
+    <label class="field-label"><input type="checkbox" id="f-active" ${(!existing||existing.active!==false)?'checked':''} style="width:auto;margin-right:6px;">Aktywny (widoczny na Dziś)</label>
+    <div style="margin-top:16px;"><button class="btn" id="f-save">Zapisz</button></div>
+  `, (ov)=>{
+    ov.querySelector('#f-save').onclick = async ()=>{
+      const name = ov.querySelector('#f-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      const dose = ov.querySelector('#f-dose').value.trim();
+      const schedule = ov.querySelector('#f-sched').value.trim();
+      const active = ov.querySelector('#f-active').checked;
+      if(existing){ Object.assign(existing, {name, dose, schedule, active}); }
+      else { state.cfg.medications = state.cfg.medications||[]; state.cfg.medications.push({id:uid(), name, dose, schedule, active}); }
+      await saveConfig(state.cfg); closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+
+function openSymptomForm(existing){
+  const existingGroups = [...new Set((state.cfg.symptoms||[]).map(s=>s.group||'Inne'))];
+  openSheet(`
+    <h3>${existing?'Edytuj objaw':'Nowy objaw'}</h3>
+    <label class="field-label" style="margin-top:0;">Nazwa</label>
+    <input type="text" id="f-name" value="${existing?escapeHtml(existing.name):''}" placeholder="np. Ból głowy">
+    <label class="field-label">Kategoria</label>
+    <input type="text" id="f-group" list="grp-list" value="${existing?escapeHtml(existing.group||''):''}" placeholder="np. Kardio">
+    <datalist id="grp-list">${existingGroups.map(g=>`<option value="${escapeHtml(g)}">`).join('')}</datalist>
+    <div style="margin-top:16px;"><button class="btn" id="f-save">Zapisz</button></div>
+  `, (ov)=>{
+    ov.querySelector('#f-save').onclick = async ()=>{
+      const name = ov.querySelector('#f-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      const group = ov.querySelector('#f-group').value.trim() || 'Inne';
+      if(existing){ Object.assign(existing, {name, group}); }
+      else { state.cfg.symptoms = state.cfg.symptoms||[]; state.cfg.symptoms.push({id:uid(), name, group}); }
+      await saveConfig(state.cfg); closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+
+function openGenericForm(catKey, existing){
+  const labels = {activities:'Aktywność / zdarzenie'};
+  openSheet(`
+    <h3>${existing?'Edytuj':'Nowa pozycja'} — ${labels[catKey]||catKey}</h3>
+    <label class="field-label" style="margin-top:0;">Nazwa</label>
+    <input type="text" id="f-name" value="${existing?escapeHtml(existing.name):''}">
+    <div style="margin-top:16px;"><button class="btn" id="f-save">Zapisz</button></div>
+  `, (ov)=>{
+    ov.querySelector('#f-save').onclick = async ()=>{
+      const name = ov.querySelector('#f-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      if(existing){ existing.name = name; }
+      else { state.cfg[catKey] = state.cfg[catKey]||[]; state.cfg[catKey].push({id:uid(), name}); }
+      await saveConfig(state.cfg); closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+
+function openDrinkForm(existing){
+  openSheet(`
+    <h3>${existing?'Edytuj napój':'Nowy napój'}</h3>
+    <label class="field-label" style="margin-top:0;">Nazwa</label>
+    <input type="text" id="f-name" value="${existing?escapeHtml(existing.name):''}" placeholder="np. Sok">
+    <label class="field-label">Ikona (emoji)</label>
+    <input type="text" id="f-icon" value="${existing?existing.icon||'':''}" placeholder="🥤" maxlength="4">
+    <label class="field-label">Domyślna ilość (ml)</label>
+    <input type="number" id="f-ml" value="${existing?existing.defaultMl:200}" min="0" step="10">
+    <div style="margin-top:16px;"><button class="btn" id="f-save">Zapisz</button></div>
+  `, (ov)=>{
+    ov.querySelector('#f-save').onclick = async ()=>{
+      const name = ov.querySelector('#f-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      const icon = ov.querySelector('#f-icon').value.trim() || '🥤';
+      const defaultMl = Number(ov.querySelector('#f-ml').value)||0;
+      if(existing){ Object.assign(existing, {name, icon, defaultMl}); }
+      else { state.cfg.drinkTypes = state.cfg.drinkTypes||[]; state.cfg.drinkTypes.push({id:uid(), name, icon, defaultMl}); }
+      await saveConfig(state.cfg); closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+
+// ---- export ----
+function downloadFile(filename, content, mime){
+  try{
+    const blob = new Blob([content], {type:mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 3000);
+  }catch(e){
+    try{
+      // Fallback for viewers without Blob/ObjectURL support: data: URI
+      const a = document.createElement('a');
+      a.href = `data:${mime};charset=utf-8,` + encodeURIComponent(content);
+      a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+    }catch(e2){
+      toast('Nie udało się pobrać pliku w tym widoku.');
+    }
+  }
+}
+
+async function exportData(fmt, range){
+  const today = effectiveDateStr(state.cfg);
+  let startDate;
+  if(range==='all'){
+    let keys=[];
+    try{ const r = await storageShim.list('month:'); keys = r? r.keys : []; }catch(e){ keys=[]; }
+    const monthKeys = keys.map(k=>k.replace('month:','')).sort();
+    startDate = monthKeys.length ? monthKeys[0]+'-01' : today;
+  } else {
+    startDate = addDays(today, -(Number(range)-1));
+  }
+  const days = await getRangeDays(startDate, today);
+
+  if(fmt==='csv'){
+    const rows = [['data','czas','kategoria','typ','wartosc','jednostka','notatka']];
+    days.forEach(({date,log})=>{
+      log.drinks.forEach(d=>rows.push([date,d.time,'napoj', d.label||drinkName(d.type), d.ml,'ml','']));
+      log.bowel.forEach(b=>rows.push([date,b.time,'wyprozninie','', b.bristol||'','bristol', b.note||'']));
+      log.meds.forEach(m=>{ const med=medById(m.medId); rows.push([date,m.time,'lek', med?med.name:m.medId,'','', '']); });
+      log.symptoms.forEach(s=>{ const sym=symById(s.symptomId); rows.push([date,s.time,'objaw', sym?sym.name:s.symptomId, s.severity||'','1-3', s.note||'']); });
+      log.mood.forEach(m=>rows.push([date,m.time,'nastroj','nastroj/energia/fokus/produktywnosc', `${m.mood}/${m.energy}/${m.focus}/${m.productivity}`,'1-10', m.note||'']));
+      log.activities.forEach(a=>{ const act=actById(a.activityId); rows.push([date,a.time,'aktywnosc', act?act.name:a.activityId,'','', a.note||'']); });
+      if(log.sleep) rows.push([date,'','sen','jakosc', log.sleep.quality,'1-10', log.sleep.note||'']);
+      log.notes.forEach(n=>rows.push([date,n.time,'notatka','','','', n.text]));
+    });
+    const csv = rows.map(r=>r.map(v=>{
+      const s = String(v??''); return /[",\n;]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+    }).join(';')).join('\n');
+    downloadFile(`dziennik-zdrowia_${startDate}_${today}.csv`, csv, 'text/csv');
+    toast('Wyeksportowano CSV');
+    return;
+  }
+
+  // markdown, styled like project convention
+  const agg = dailyAggregate(days);
+  let md = `# Dziennik Zdrowia — eksport ${startDate} – ${today}\n\n`;
+  md += `**Data eksportu:** ${today}\n**Zakres:** ${days.length} dni\n**Źródło:** Dziennik Zdrowia (aplikacja własna)\n\n---\n\n`;
+  md += `## Tabela dzienna\n\n`;
+  md += `| Data | Nastrój | Energia | Fokus | Prod. | Sen | Kawa | Woda(ml) | Wypróżn. | Objawy | Leki wzięte |\n`;
+  md += `|---|---|---|---|---|---|---|---|---|---|---|\n`;
+  agg.forEach(d=>{
+    md += `| ${d.date} | ${fmtNum(d.moodAvg)} | ${fmtNum(d.energyAvg)} | ${fmtNum(d.focusAvg)} | ${fmtNum(d.prodAvg)} | ${fmtNum(d.sleepQuality)} | ${d.coffeeCount} | ${d.waterMl} | ${d.bowelCount} | ${d.symptomCount} | ${d.medsCount} |\n`;
+  });
+  md += `\n---\n\n## Objawy — szczegóły\n\n`;
+  let anySym=false;
+  days.forEach(({date,log})=>{
+    log.symptoms.forEach(s=>{
+      anySym=true;
+      const sym = symById(s.symptomId);
+      const sevLabel = ['','łagodny','umiarkowany','silny'][s.severity]||'';
+      md += `- **${date} ${s.time}** — ${sym?sym.name:s.symptomId} (${sevLabel})${s.note?`: ${s.note}`:''}\n`;
+    });
+  });
+  if(!anySym) md += `_Brak zgłoszonych objawów w tym okresie._\n`;
+  md += `\n---\n\n## Notatki\n\n`;
+  let anyNote=false;
+  days.forEach(({date,log})=>{
+    log.notes.forEach(n=>{ anyNote=true; md += `- **${date} ${n.time}** — ${n.text}\n`; });
+  });
+  if(!anyNote) md += `_Brak notatek w tym okresie._\n`;
+  md += `\n---\n\n## Zastrzeżenie\n\nDane wygenerowane automatycznie na podstawie samodzielnego raportowania w aplikacji Dziennik Zdrowia. Wartości nastroju/energii/fokusu/produktywności to średnie dzienne w skali 1–10. Nie stanowi to porady medycznej — do interpretacji klinicznej wymagane jest zestawienie z pełną dokumentacją medyczną.\n`;
+
+  downloadFile(`${today}_Dziennik_Zdrowia_eksport.md`, md, 'text/markdown');
+  toast('Wyeksportowano Markdown');
+}
+function fmtNum(v){ return v==null ? '—' : (Number.isInteger(v)?v:v.toFixed(1)); }
+
+// ---- view dispatcher ----
+function wireCurrentView(){
+  if(state.view==='dashboard') wireDashboard();
+  else if(state.view==='history') wireHistory();
+  else if(state.view==='stats') wireStats();
+  else if(state.view==='settings') wireSettings();
+}
+
+// All views/handlers are defined above — safe to boot now.
+boot();
+
+// Register service worker (enables "Install app" + offline launch on Android/Chrome).
+// Silently no-ops if unsupported or if opened as a local file:// page.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(()=>{ /* offline install just won't be available */ });
+  });
+}
+</script>
+</body>
+</html>
