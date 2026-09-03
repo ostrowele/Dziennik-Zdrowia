@@ -212,6 +212,17 @@
   .corr-row .lbl{font-size:13px;flex:0 0 auto;width:min(150px,42%);}
   .corr-row .val{font-size:12.5px;color:var(--muted);width:38px;text-align:right;}
 
+  .goal-row{padding:8px 2px;}
+  .goal-row .row{margin-bottom:5px;font-size:12.5px;color:var(--muted);}
+  .goal-row .row b{color:var(--text);font-weight:600;}
+  .goal-bar-bg{height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;}
+  .goal-bar-fill{height:100%;border-radius:4px;transition:width .2s;}
+
+  .streak-card{display:flex;align-items:center;gap:10px;padding:12px 2px;}
+  .streak-card .flame{font-size:20px;flex:0 0 auto;}
+  .streak-card .txt{font-size:13px;line-height:1.35;}
+  .streak-card .txt b{color:var(--accent);}
+
   .seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px;}
   .seg button{
     flex:1;background:none;border:none;color:var(--muted);padding:8px 4px;font-size:12.5px;
@@ -546,6 +557,55 @@ function fmtDateHeader(dateStr){
    PART 3 — DASHBOARD VIEW
    ========================================================================= */
 
+async function computeMedsStreak(){
+  const active = (state.cfg.medications||[]).filter(m=>m.active!==false);
+  if(!active.length) return null;
+  const today = effectiveDateStr(state.cfg);
+  let streak = 0;
+  let cursor = addDays(today, -1);
+  for(let i=0;i<400;i++){
+    const dl = await getDayLog(cursor);
+    const allTaken = active.every(m=>dl.meds.some(x=>x.medId===m.id));
+    if(!allTaken) break;
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+  const todayLog = await getDayLog(today);
+  const takenToday = active.filter(m=>todayLog.meds.some(x=>x.medId===m.id)).length;
+  return {streak, takenToday, totalActive:active.length};
+}
+
+async function computeSymptomStreaks(limit=2){
+  let keys=[];
+  try{ const r = await storageShim.list('month:'); keys = r?r.keys:[]; }catch(e){ keys=[]; }
+  const monthKeys = keys.map(k=>k.replace('month:','')).sort();
+  if(!monthKeys.length) return [];
+  const today = effectiveDateStr(state.cfg);
+  const days = await getRangeDays(monthKeys[0]+'-01', today);
+  const lastSeen = {}, freq = {};
+  days.forEach(({date,log})=>{
+    log.symptoms.forEach(s=>{ lastSeen[s.symptomId]=date; freq[s.symptomId]=(freq[s.symptomId]||0)+1; });
+  });
+  const ids = Object.keys(freq).sort((a,b)=>freq[b]-freq[a]).slice(0,limit);
+  return ids.map(id=>{
+    const sym = symById(id);
+    const last = lastSeen[id];
+    const daysSince = Math.round((new Date(today)-new Date(last))/86400000);
+    return {name: sym?sym.name:'?', daysSince};
+  });
+}
+
+function contextBefore(dl, timeStr, windowHours=3){
+  const t = timeStrToHour(timeStr);
+  if(t==null) return '';
+  const items = [];
+  dl.drinks.forEach(d=>{ const h=timeStrToHour(d.time); if(h!=null && h<=t && h>=t-windowHours) items.push({h, label: d.label||drinkName(d.type)}); });
+  dl.meds.forEach(m=>{ const h=timeStrToHour(m.time); if(h!=null && h<=t && h>=t-windowHours){ const med=medById(m.medId); items.push({h, label: med?med.name:'lek'}); } });
+  dl.activities.forEach(a=>{ const h=timeStrToHour(a.time); if(h!=null && h<=t && h>=t-windowHours){ const act=actById(a.activityId); items.push({h, label: act?act.name:'aktywność'}); } });
+  items.sort((a,b)=>b.h-a.h);
+  return items.slice(0,3).map(i=>i.label).join(', ');
+}
+
 async function viewDashboard(){
   const date = state.selectedDate;
   const dl = await getDayLog(date);
@@ -562,6 +622,40 @@ async function viewDashboard(){
   }).join('') + `<button class="qbtn" data-act="drink-custom">
       <span class="ic">➕</span><span class="lb">Inny / ml</span>
     </button>`;
+
+  const goalLines = (cfg.drinkTypes||[]).filter(dt=>dt.goalMode && dt.goalTarget).map(dt=>{
+    const entries = dl.drinks.filter(x=>x.type===dt.id);
+    let current, unit;
+    if(dt.goalMode==='max-count'){ current = entries.length; unit=''; }
+    else { current = entries.reduce((s,e)=>s+(e.ml||0),0); unit='ml'; }
+    const pct = Math.min(100, (current/dt.goalTarget)*100);
+    const isMin = dt.goalMode.startsWith('min');
+    const met = isMin ? current>=dt.goalTarget : current<=dt.goalTarget;
+    const color = met ? 'var(--good)' : (isMin? 'var(--teal)' : 'var(--danger)');
+    return `<div class="goal-row">
+        <div class="row"><span>${dt.icon} ${escapeHtml(dt.name)}</span><span><b>${current}${unit}</b> / ${dt.goalTarget}${unit} ${isMin?'(min)':'(maks)'}</span></div>
+        <div class="goal-bar-bg"><div class="goal-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+      </div>`;
+  }).join('');
+  const goalsHtml = goalLines ? `<div class="card" style="margin-top:10px;">${goalLines}</div>` : '';
+
+  let streakHtml = '';
+  if(isToday){
+    const medsStreak = await computeMedsStreak();
+    const symStreaks = await computeSymptomStreaks(2);
+    const lines = [];
+    if(medsStreak){
+      lines.push(`<div class="streak-card"><div class="flame">🔥</div><div class="txt"><b>${medsStreak.streak}</b> dni z rzędu — wszystkie leki wzięte (do wczoraj) · dziś: ${medsStreak.takenToday}/${medsStreak.totalActive}</div></div>`);
+    }
+    symStreaks.forEach(s=>{
+      if(s.daysSince===0){
+        lines.push(`<div class="streak-card"><div class="flame">📍</div><div class="txt">„${escapeHtml(s.name)}” — wystąpił dziś</div></div>`);
+      } else {
+        lines.push(`<div class="streak-card"><div class="flame">🌿</div><div class="txt"><b>${s.daysSince}</b> dni bez „${escapeHtml(s.name)}”</div></div>`);
+      }
+    });
+    if(lines.length) streakHtml = `<section class="block"><div class="block-head"><h2>Serie</h2></div><div class="list">${lines.join('')}</div></section>`;
+  }
 
   const bowelCnt = dl.bowel.length;
   const notesCnt = dl.notes.length;
@@ -596,8 +690,9 @@ async function viewDashboard(){
   const symHtml = symToday.length ? `<div class="list">${symToday.map((e,i)=>{
       const s = symById(e.symptomId);
       const sevLabel = ['','łagodny','umiarkowany','silny'][e.severity]||'';
+      const ctx = contextBefore(dl, e.time);
       return `<div class="row">
-        <div style="font-size:14px;">${escapeHtml(s?s.name:'?')} <span class="note-chip">${sevLabel} · ${e.time}</span></div>
+        <div style="font-size:14px;">${escapeHtml(s?s.name:'?')} <span class="note-chip">${sevLabel} · ${e.time}${ctx?' · wcześniej: '+escapeHtml(ctx):''}</span></div>
         <button class="swipe-del" data-act="del-symptom" data-idx="${i}">✕</button>
       </div>`;
     }).join('')}</div>` : '';
@@ -629,9 +724,12 @@ async function viewDashboard(){
       <div class="brand">Dziennik Zdrowia</div>
     </div>
 
+    ${streakHtml}
+
     <section class="block">
       <div class="block-head"><h2>Napoje</h2></div>
       <div class="quick-grid">${drinksHtml}</div>
+      ${goalsHtml}
     </section>
 
     <section class="block">
@@ -1151,8 +1249,191 @@ function svgBars(agg, key, opts={}){
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">${bars}</svg>`;
 }
 
+// ---- time-of-day helpers ----
+function timeStrToHour(t){
+  if(!t || typeof t!=='string' || !t.includes(':')) return null;
+  const [h,m] = t.split(':').map(Number);
+  if(Number.isNaN(h)) return null;
+  return h + (Number.isNaN(m)?0:m)/60;
+}
+
+// Compares average ENERGY of mood entries logged within `windowHours` after an
+// event (e.g. coffee, a specific medication) vs mood entries not near that event.
+function eventEffectOnEnergy(days, eventTimesPicker, windowHours){
+  const withVals=[], withoutVals=[];
+  days.forEach(({log})=>{
+    const evTimes = eventTimesPicker(log).map(timeStrToHour).filter(x=>x!=null);
+    log.mood.forEach(m=>{
+      const mt = timeStrToHour(m.time);
+      if(mt==null) return;
+      const near = evTimes.some(et => mt>=et && mt<=et+windowHours);
+      (near?withVals:withoutVals).push(m.energy);
+    });
+  });
+  if(withVals.length<4 || withoutVals.length<4) return null;
+  const withAvg = avg(withVals), withoutAvg = avg(withoutVals);
+  return {withAvg, withoutAvg, nWith:withVals.length, nWithout:withoutVals.length, diff:withAvg-withoutAvg};
+}
+
+// Plain-language takeaways: turns the strongest correlations + event-effect
+// calculations into short sentences. Still pure local arithmetic, no AI.
+function buildInsightSentences(agg, days){
+  const out = [];
+
+  const corrTop = CORR_PAIRS.map(([ka,kb,label])=>{
+    const {xs,ys,n} = pairedSeries(agg, ka, kb);
+    const r = pearson(xs,ys);
+    return {label, r, n};
+  }).filter(c=>c.r!=null && Math.abs(c.r)>=0.3)
+    .sort((a,b)=>Math.abs(b.r)-Math.abs(a.r)).slice(0,4);
+
+  corrTop.forEach(c=>{
+    const strength = Math.abs(c.r)>=0.5 ? 'silny' : 'umiarkowany';
+    const dir = c.r>=0 ? 'dodatni' : 'ujemny';
+    out.push({icon:'📈', text:`${c.label} — ${strength} związek ${dir} (r=${c.r>=0?'+':''}${c.r.toFixed(2)}, n=${c.n} dni).`});
+  });
+
+  const coffeeFx = eventEffectOnEnergy(days, log=>log.drinks.filter(d=>d.type==='coffee').map(d=>d.time), 3);
+  if(coffeeFx && Math.abs(coffeeFx.diff)>=0.4){
+    const dir = coffeeFx.diff>0 ? 'wyższa' : 'niższa';
+    out.push({icon:'☕', text:`Energia w ciągu 3h po kawie bywa średnio ${dir} o ${Math.abs(coffeeFx.diff).toFixed(1)} pkt (${coffeeFx.withAvg.toFixed(1)} vs ${coffeeFx.withoutAvg.toFixed(1)}/10, n=${coffeeFx.nWith} wpisów po / ${coffeeFx.nWithout} poza).`});
+  }
+
+  (state.cfg.medications||[]).forEach(m=>{
+    const fx = eventEffectOnEnergy(days, log=>log.meds.filter(x=>x.medId===m.id).map(x=>x.time), 3);
+    if(fx && Math.abs(fx.diff)>=0.4){
+      const dir = fx.diff>0 ? 'wyższa' : 'niższa';
+      out.push({icon:'💊', text:`Energia w ciągu 3h po „${escapeHtml(m.name)}” bywa średnio ${dir} o ${Math.abs(fx.diff).toFixed(1)} pkt (n=${fx.nWith}/${fx.nWithout}).`});
+    }
+  });
+
+  return out;
+}
+
+// ---- intraday (single-day) timeline chart: mood lines + event markers on a 0–24h axis ----
+function svgIntraday(dayLog, opts={}){
+  const W = opts.width||320, H = opts.height||190, pad=18, markerY = H-40;
+  const xFor = h => pad + (h/24)*(W-2*pad);
+  const top=14, bottom=markerY-12;
+  const yFor = v => bottom - ((v-1)/9)*(bottom-top);
+
+  const sorted = dayLog.mood.slice().filter(m=>timeStrToHour(m.time)!=null).sort((a,b)=>a.time.localeCompare(b.time));
+  const markerDefs = [];
+  dayLog.drinks.forEach(d=>markerDefs.push({h:timeStrToHour(d.time), ic:drinkIcon(d.type)}));
+  dayLog.meds.forEach(m=>markerDefs.push({h:timeStrToHour(m.time), ic:'💊'}));
+  dayLog.symptoms.forEach(s=>markerDefs.push({h:timeStrToHour(s.time), ic:'⚠️'}));
+  dayLog.activities.forEach(a=>markerDefs.push({h:timeStrToHour(a.time), ic:'🏃'}));
+
+  if(sorted.length===0 && markerDefs.length===0) return `<div class="empty">Brak wpisów dzisiaj.</div>`;
+
+  let grid='';
+  for(let h=0; h<=24; h+=4){
+    grid += `<line x1="${xFor(h).toFixed(1)}" y1="10" x2="${xFor(h).toFixed(1)}" y2="${markerY-8}" stroke="var(--line)" stroke-width="1"/>`;
+    grid += `<text x="${xFor(h).toFixed(1)}" y="${markerY+22}" font-size="9" fill="var(--muted-2)" text-anchor="middle">${h}:00</text>`;
+  }
+
+  const dims = [
+    {key:'energy', color:'#5fa8a0'},
+    {key:'mood', color:'#c98a4b'},
+    {key:'focus', color:'#7fa65c'},
+    {key:'productivity', color:'#8b92a0'},
+  ];
+  let paths='';
+  if(sorted.length>0){
+    dims.forEach(d=>{
+      let path=''; let started=false;
+      sorted.forEach(m=>{
+        const h = timeStrToHour(m.time);
+        path += `${started?'L':'M'}${xFor(h).toFixed(1)},${yFor(m[d.key]).toFixed(1)} `;
+        started = true;
+      });
+      const dots = sorted.map(m=>{ const h=timeStrToHour(m.time); return `<circle cx="${xFor(h).toFixed(1)}" cy="${yFor(m[d.key]).toFixed(1)}" r="2.5" fill="${d.color}"/>`; }).join('');
+      paths += `<path d="${path.trim()}" fill="none" stroke="${d.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
+    });
+  }
+
+  let markers='';
+  markerDefs.forEach(md=>{
+    if(md.h==null) return;
+    markers += `<text x="${xFor(md.h).toFixed(1)}" y="${markerY+2}" font-size="12" text-anchor="middle">${md.ic}</text>`;
+  });
+
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${grid}${paths}${markers}</svg>`;
+}
+
+function statsSegHtml(range){
+  const opts = [['today','Dziś'],[7,'7 dni'],[30,'30 dni'],[90,'90 dni'],['all','Wszystko']];
+  return `<div class="seg" style="margin-bottom:18px;flex-wrap:wrap;">${opts.map(([v,lb])=>
+    `<button data-range="${v}" class="${String(range)===String(v)?'active':''}" style="flex:0 0 auto;padding:8px 10px;">${lb}</button>`).join('')}</div>`;
+}
+
+function svgHeatmap(agg, opts){
+  const cell=13, gap=3, padTop=14, padLeft=4;
+  const capped = agg.slice(-182);
+  if(!capped.length) return `<div class="empty">Brak danych.</div>`;
+  const firstDow = (new Date(capped[0].date+'T00:00:00').getDay()+6)%7; // Monday=0
+  const cells = new Array(firstDow).fill(null).concat(capped);
+  const weeks = [];
+  for(let i=0;i<cells.length;i+=7) weeks.push(cells.slice(i,i+7));
+  const W = padLeft + weeks.length*(cell+gap);
+  const H = padTop + 7*(cell+gap);
+  let rects='', monthLabels='', lastMonth=null;
+  weeks.forEach((week,wi)=>{
+    const x = padLeft + wi*(cell+gap);
+    week.forEach((d,di)=>{
+      if(!d) return;
+      const y = padTop + di*(cell+gap);
+      const fill = opts.colorFn(opts.valueFn(d));
+      rects += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="3" fill="${fill}"><title>${d.date}</title></rect>`;
+    });
+    const firstEntry = week.find(d=>d);
+    if(firstEntry){
+      const mo = firstEntry.date.slice(0,7);
+      if(mo!==lastMonth){ monthLabels += `<text x="${x}" y="10" font-size="8" fill="var(--muted-2)">${MONTHS_PL[Number(mo.slice(5,7))-1].slice(0,3)}</text>`; lastMonth=mo; }
+    }
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${monthLabels}${rects}</svg>`;
+}
+
+async function viewStatsToday(range){
+  const today = effectiveDateStr(state.cfg);
+  const dl = await getDayLog(today);
+  const tiles = [
+    {lb:'Kawa', val: dl.drinks.filter(d=>d.type==='coffee').length},
+    {lb:'Woda (ml)', val: dl.drinks.filter(d=>d.type==='water').reduce((s,d)=>s+(d.ml||0),0)},
+    {lb:'Śr. energia dziś', val: dl.mood.length? avg(dl.mood.map(m=>m.energy)).toFixed(1) : '—'},
+    {lb:'Śr. nastrój dziś', val: dl.mood.length? avg(dl.mood.map(m=>m.mood)).toFixed(1) : '—'},
+    {lb:'Objawy', val: dl.symptoms.length},
+    {lb:'Leki wzięte', val: dl.meds.length},
+  ];
+  return `
+    <div class="topbar">
+      <div><div class="date-label">Statystyki</div><div class="date-sub">arytmetyka lokalna, bez AI</div></div>
+    </div>
+    ${statsSegHtml(range)}
+    <section class="block">
+      <div class="stat-grid">${tiles.map(t=>`<div class="stat-tile"><div class="num">${t.val}</div><div class="lb">${t.lb}</div></div>`).join('')}</div>
+    </section>
+    <section class="block">
+      <div class="block-head"><h2>Dziś w czasie</h2></div>
+      <div class="chart-wrap">
+        ${svgIntraday(dl)}
+        <div class="chart-legend" style="flex-wrap:wrap;">
+          <span><i style="background:#5fa8a0"></i>energia</span>
+          <span><i style="background:#c98a4b"></i>nastrój</span>
+          <span><i style="background:#7fa65c"></i>fokus</span>
+          <span><i style="background:#8b92a0"></i>produktywność</span>
+          <span>☕💧🍵 napoje · 💊 leki · ⚠️ objawy · 🏃 aktywność</span>
+        </div>
+      </div>
+      <p class="note-chip" style="margin-top:8px;padding:0 4px;">Zestaw ikon na osi czasu pokazuje, co działo się przed zmianami energii/nastroju — im więcej dni zbierzesz, tym bardziej wiarygodne wzorce zobaczysz w zakresach 7/30 dni.</p>
+    </section>
+  `;
+}
+
 async function viewStats(){
   const range = state.statsRange;
+  if(range==='today') return await viewStatsToday(range);
   const today = effectiveDateStr(state.cfg);
   let startDate;
   if(range==='all'){
@@ -1196,20 +1477,43 @@ async function viewStats(){
       </div>`;
   }).join('') : `<div class="empty">Za mało danych do policzenia korelacji (potrzeba ≥5 dni z obiema wartościami).</div>`;
 
+  const insights = buildInsightSentences(agg, days);
+  const insightsHtml = insights.length ? insights.map(i=>`
+      <div class="row" style="align-items:flex-start;">
+        <div style="font-size:16px;flex:0 0 auto;">${i.icon}</div>
+        <div style="font-size:13.5px;line-height:1.4;">${i.text}</div>
+      </div>`).join('') : `<div class="empty">Jeszcze za mało danych na wyraźne wzorce. Wróć po kilku-kilkunastu dniach logowania.</div>`;
+
   return `
     <div class="topbar">
       <div><div class="date-label">Statystyki</div><div class="date-sub">arytmetyka lokalna, bez AI</div></div>
     </div>
 
-    <div class="seg" style="margin-bottom:18px;">
-      <button data-range="7" class="${range==7||range=='7'?'active':''}">7 dni</button>
-      <button data-range="30" class="${range==30?'active':''}">30 dni</button>
-      <button data-range="90" class="${range==90?'active':''}">90 dni</button>
-      <button data-range="all" class="${range==='all'?'active':''}">Wszystko</button>
-    </div>
+    ${statsSegHtml(range)}
 
     <section class="block">
       <div class="stat-grid">${tiles.map(t=>`<div class="stat-tile"><div class="num">${t.val}</div><div class="lb">${t.lb}</div></div>`).join('')}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Insighty</h2></div>
+      <div class="list">${insightsHtml}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Heatmapa — nastrój</h2></div>
+      <div class="chart-wrap" style="overflow-x:auto;">
+        ${svgHeatmap(agg, {valueFn:d=>d.moodAvg, colorFn:v=> v==null?'var(--surface-2)':`rgba(127,166,92,${(0.15+0.85*Math.min(1,Math.max(0,(v-1)/9))).toFixed(2)})`})}
+      </div>
+      <p class="note-chip" style="margin-top:6px;padding:0 4px;">Ostatnie ${Math.min(182,agg.length)} dni · puste = brak wpisu, ciemniejsza zieleń = wyższy nastrój.</p>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Heatmapa — objawy</h2></div>
+      <div class="chart-wrap" style="overflow-x:auto;">
+        ${svgHeatmap(agg, {valueFn:d=>d.symptomCount, colorFn:c=> !c?'var(--surface-2)':`rgba(193,85,74,${(0.25+0.75*Math.min(1,c/5)).toFixed(2)})`})}
+      </div>
+      <p class="note-chip" style="margin-top:6px;padding:0 4px;">Intensywniejszy czerwony = więcej zgłoszonych objawów danego dnia.</p>
     </section>
 
     <section class="block">
@@ -1241,7 +1545,7 @@ async function viewStats(){
     </section>
 
     <section class="block">
-      <div class="block-head"><h2>Korelacje (Pearson r)</h2></div>
+      <div class="block-head"><h2>Korelacje (Pearson r) — wszystkie</h2></div>
       <div class="card">
         ${corrHtml}
         <p class="note-chip" style="margin-top:8px;">Korelacja ≠ przyczynowość. To surowa arytmetyka na Twoich danych — do interpretacji z pełnym kontekstem medycznym lepiej nadaje się rozmowa w projekcie (eksportuj dane w Ustawieniach).</p>
@@ -1253,7 +1557,7 @@ async function viewStats(){
 function wireStats(){
   $$('[data-range]').forEach(b=>b.onclick=async ()=>{
     const v = b.dataset.range;
-    state.statsRange = v==='all' ? 'all' : Number(v);
+    state.statsRange = (v==='all'||v==='today') ? v : Number(v);
     await render();
   });
 }
@@ -1342,16 +1646,25 @@ function settingsListHtml(catKey, singularLabel){
   </div>`;
 }
 
+function goalLabel(dt){
+  if(!dt.goalMode || !dt.goalTarget) return '';
+  const map = {'max-count':`maks. ${dt.goalTarget}/dzień`, 'min-ml':`min. ${dt.goalTarget}ml/dzień`, 'max-ml':`maks. ${dt.goalTarget}ml/dzień`};
+  return map[dt.goalMode] || '';
+}
+
 function settingsDrinksHtml(){
   const items = state.cfg.drinkTypes||[];
-  const rows = items.map(i=>`
+  const rows = items.map(i=>{
+    const gl = goalLabel(i);
+    return `
     <div class="row">
-      <div style="font-size:14.5px;">${i.icon||'🥤'} ${escapeHtml(i.name)} <span class="note-chip">domyślnie ${i.defaultMl}ml</span></div>
+      <div style="font-size:14.5px;">${i.icon||'🥤'} ${escapeHtml(i.name)} <span class="note-chip">domyślnie ${i.defaultMl}ml${gl?' · cel: '+gl:''}</span></div>
       <div style="display:flex;gap:6px;">
         <button class="btn ghost sm" data-edit-drink="${i.id}">edytuj</button>
         <button class="swipe-del" data-del-drink="${i.id}">✕</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   return `<div class="settings-group">
     <div class="list">${rows || '<div class="empty">Brak napojów.</div>'}</div>
     <div style="margin-top:12px;"><button class="btn secondary" data-add-drink="1">+ Dodaj napój</button></div>
@@ -1518,6 +1831,14 @@ function openDrinkForm(existing){
     <input type="text" id="f-icon" value="${existing?existing.icon||'':''}" placeholder="🥤" maxlength="4">
     <label class="field-label">Domyślna ilość (ml)</label>
     <input type="number" id="f-ml" value="${existing?existing.defaultMl:200}" min="0" step="10">
+    <label class="field-label">Cel dzienny (opcjonalnie)</label>
+    <select id="f-goal-mode">
+      <option value="" ${!existing||!existing.goalMode?'selected':''}>Brak celu</option>
+      <option value="max-count" ${existing&&existing.goalMode==='max-count'?'selected':''}>Maksimum — liczba porcji</option>
+      <option value="min-ml" ${existing&&existing.goalMode==='min-ml'?'selected':''}>Minimum — suma ml</option>
+      <option value="max-ml" ${existing&&existing.goalMode==='max-ml'?'selected':''}>Maksimum — suma ml</option>
+    </select>
+    <input type="number" id="f-goal-target" style="margin-top:8px;" placeholder="wartość celu" value="${existing&&existing.goalTarget?existing.goalTarget:''}" min="0">
     <div style="margin-top:16px;"><button class="btn" id="f-save">Zapisz</button></div>
   `, (ov)=>{
     ov.querySelector('#f-save').onclick = async ()=>{
@@ -1525,8 +1846,12 @@ function openDrinkForm(existing){
       if(!name){ toast('Podaj nazwę'); return; }
       const icon = ov.querySelector('#f-icon').value.trim() || '🥤';
       const defaultMl = Number(ov.querySelector('#f-ml').value)||0;
-      if(existing){ Object.assign(existing, {name, icon, defaultMl}); }
-      else { state.cfg.drinkTypes = state.cfg.drinkTypes||[]; state.cfg.drinkTypes.push({id:uid(), name, icon, defaultMl}); }
+      const goalMode = ov.querySelector('#f-goal-mode').value || null;
+      const goalTargetRaw = Number(ov.querySelector('#f-goal-target').value)||0;
+      const goalTarget = (goalMode && goalTargetRaw>0) ? goalTargetRaw : null;
+      const finalGoalMode = goalTarget ? goalMode : null;
+      if(existing){ Object.assign(existing, {name, icon, defaultMl, goalMode:finalGoalMode, goalTarget}); }
+      else { state.cfg.drinkTypes = state.cfg.drinkTypes||[]; state.cfg.drinkTypes.push({id:uid(), name, icon, defaultMl, goalMode:finalGoalMode, goalTarget}); }
       await saveConfig(state.cfg); closeSheet(); toast('Zapisano'); await render();
     };
   });
