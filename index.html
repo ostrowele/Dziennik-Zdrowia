@@ -567,7 +567,7 @@ function fmtDateHeader(dateStr){
    ========================================================================= */
 
 async function computeMedsStreak(){
-  const active = (state.cfg.medications||[]).filter(m=>m.active!==false);
+  const active = (state.cfg.medications||[]).filter(m=>m.active!==false && m.medType!=='prn');
   if(!active.length) return null;
   const today = effectiveDateStr(state.cfg);
   let streak = 0;
@@ -682,10 +682,14 @@ async function viewDashboard(){
   const notesCnt = dl.notes.length;
 
   const activeMeds = (cfg.medications||[]).filter(m=>m.active!==false);
-  const medsHtml = activeMeds.length ? `<div class="list">${activeMeds.map(m=>{
-      const takenToday = dl.meds.filter(x=>x.medId===m.id);
-      const done = takenToday.length>0;
-      return `<div class="row">
+  const dailyMeds = activeMeds.filter(m=>m.medType!=='prn');
+  const prnMeds = activeMeds.filter(m=>m.medType==='prn');
+  const medRow = (m)=>{
+    const takenToday = dl.meds.filter(x=>x.medId===m.id);
+    const done = takenToday.length>0;
+    const isPrn = m.medType==='prn';
+    const btnLabel = isPrn ? (done?`${takenToday.length}×`:'weź') : (done?'wzięte':'weź');
+    return `<div class="row">
         <div>
           <div style="font-size:14.5px;${done?'':'color:var(--text);'}">${escapeHtml(m.name)}</div>
           <div class="note-chip">${escapeHtml(m.dose||'')}${m.dose&&m.schedule?' · ':''}${escapeHtml(m.schedule||'')}${done?` · wzięte ${takenToday.map(t=>t.time).join(', ')}`:''}</div>
@@ -693,18 +697,21 @@ async function viewDashboard(){
         <div style="display:flex;gap:6px;">
           <button class="btn ghost sm" style="padding:9px 10px;" data-act="med-edit" data-id="${m.id}">⏱</button>
           <button class="qbtn ${done?'on':''}" style="min-height:0;padding:9px 12px;flex-direction:row;gap:6px;" data-act="med" data-id="${m.id}">
-            <span class="ic" style="font-size:16px;">${done?'✓':'○'}</span><span class="lb" style="font-size:12px;">${done?'wzięte':'weź'}</span>
+            <span class="ic" style="font-size:16px;">${done?(isPrn?'💊':'✓'):'○'}</span><span class="lb" style="font-size:12px;">${btnLabel}</span>
           </button>
         </div>
       </div>`;
-    }).join('')}</div>`
-    : `<div class="empty">Brak zdefiniowanych leków.<br><button class="btn secondary sm" data-act="goto-settings-meds">Dodaj leki w Ustawieniach</button></div>`;
+  };
+  let medsHtml = '';
+  if(dailyMeds.length) medsHtml += `<div class="list">${dailyMeds.map(medRow).join('')}</div>`;
+  if(prnMeds.length) medsHtml += `${dailyMeds.length?'<div class="note-chip" style="margin:10px 2px 4px;">Doraźne (w razie potrzeby)</div>':''}<div class="list">${prnMeds.map(medRow).join('')}</div>`;
+  if(!activeMeds.length) medsHtml = `<div class="empty">Brak zdefiniowanych leków.<br><button class="btn secondary sm" data-act="goto-settings-meds">Dodaj leki w Ustawieniach</button></div>`;
 
   const moodEntries = dl.mood.slice().sort((a,b)=>a.time.localeCompare(b.time));
   const moodHtml = moodEntries.length ? `<div class="list">${moodEntries.map((e,i)=>`
       <div class="row">
         <div style="font-size:13px;color:var(--muted);width:44px;">${e.time}</div>
-        <div style="flex:1;display:flex;gap:10px;font-size:12.5px;color:var(--text);">
+        <div style="flex:1;display:flex;gap:10px;font-size:12.5px;color:var(--text);cursor:pointer;" data-edit-mood="${e.id}">
           <span>😊 ${e.mood}</span><span>⚡ ${e.energy}</span><span>🎯 ${e.focus}</span><span>📈 ${e.productivity}</span>
         </div>
         <button class="swipe-del" data-act="del-mood" data-idx="${i}">✕</button>
@@ -716,7 +723,7 @@ async function viewDashboard(){
       const sevLabel = ['','łagodny','umiarkowany','silny'][e.severity]||'';
       const ctx = contextBefore(dl, e.time);
       return `<div class="row">
-        <div style="font-size:14px;">${escapeHtml(s?s.name:'?')} <span class="note-chip">${sevLabel} · ${e.time}${ctx?' · wcześniej: '+escapeHtml(ctx):''}</span></div>
+        <div style="font-size:14px;cursor:pointer;" data-edit-symptom="${e.id}">${escapeHtml(s?s.name:'?')} <span class="note-chip">${sevLabel} · ${e.time}${ctx?' · wcześniej: '+escapeHtml(ctx):''}</span></div>
         <button class="swipe-del" data-act="del-symptom" data-idx="${i}">✕</button>
       </div>`;
     }).join('')}</div>` : '';
@@ -725,7 +732,7 @@ async function viewDashboard(){
   const actHtml = actToday.length ? `<div class="list">${actToday.map((e,i)=>{
       const a = actById(e.activityId);
       return `<div class="row">
-        <div style="font-size:14px;">${escapeHtml(a?a.name:'?')} <span class="note-chip">${e.time}${e.note?' · '+escapeHtml(e.note):''}</span></div>
+        <div style="font-size:14px;cursor:pointer;" data-edit-activity="${e.id}">${escapeHtml(a?a.name:'?')} <span class="note-chip">${e.time}${e.note?' · '+escapeHtml(e.note):''}</span></div>
         <button class="swipe-del" data-act="del-activity" data-idx="${i}">✕</button>
       </div>`;
     }).join('')}</div>` : '';
@@ -777,9 +784,10 @@ async function viewDashboard(){
 
     <section class="block">
       <div class="block-head"><h2>Leki</h2>
-        <button class="link" data-act="goto-settings-meds">edytuj</button>
+        <button class="link" data-act="goto-settings-meds">wszystkie</button>
       </div>
       ${medsHtml}
+      <button class="btn secondary sm" style="margin-top:10px;" data-act="quick-add-med">+ Dodaj lek</button>
     </section>
 
     <section class="block">
@@ -852,6 +860,9 @@ function wireDashboard(){
     state.view='settings'; state.settingsTab='meds'; renderTabbar(); await render();
   });
 
+  const quickAddMed = $('[data-act="quick-add-med"]');
+  if(quickAddMed) quickAddMed.onclick = ()=>openMedForm();
+
   const addMood = $('[data-act="add-mood"]');
   if(addMood) addMood.onclick = ()=>openMoodSheet(date);
 
@@ -860,6 +871,22 @@ function wireDashboard(){
 
   const addAct = $('[data-act="add-activity"]');
   if(addAct) addAct.onclick = ()=>openActivitySheet(date);
+
+  $$('[data-edit-mood]').forEach(el=>el.onclick=async ()=>{
+    const dlNow = await getDayLog(date);
+    const entry = dlNow.mood.find(x=>x.id===el.dataset.editMood);
+    if(entry) openEditMoodSheet(date, entry);
+  });
+  $$('[data-edit-symptom]').forEach(el=>el.onclick=async ()=>{
+    const dlNow = await getDayLog(date);
+    const entry = dlNow.symptoms.find(x=>x.id===el.dataset.editSymptom);
+    if(entry) openEditSymptomEntrySheet(date, entry);
+  });
+  $$('[data-edit-activity]').forEach(el=>el.onclick=async ()=>{
+    const dlNow = await getDayLog(date);
+    const entry = dlNow.activities.find(x=>x.id===el.dataset.editActivity);
+    if(entry) openEditActivityEntrySheet(date, entry);
+  });
 
   $$('[data-act="del-mood"]').forEach(b=>b.onclick=async ()=>{
     await mutateDay(date, dl=>dl.mood.splice(Number(b.dataset.idx),1));
@@ -910,11 +937,31 @@ function openListEditSheet(title, rows){
 }
 
 function openDrinksListSheet(date, dl){
-  const rows = dl.drinks.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(d=>({
-    id:d.id, label:`${drinkIcon(d.type)} ${escapeHtml(d.label||drinkName(d.type))}`, sub:`${d.ml}ml · ${d.time}`,
-    onDelete: ()=>mutateDay(date, dl2=>{ dl2.drinks = dl2.drinks.filter(x=>x.id!==d.id); })
-  }));
-  openListEditSheet('Napoje dziś', rows);
+  const rows = dl.drinks.slice().sort((a,b)=>b.time.localeCompare(a.time));
+  openSheet(`
+    <h3>Napoje dziś</h3>
+    <div class="list">${rows.length ? rows.map(d=>`
+      <div class="row">
+        <div style="font-size:14px;flex:0 0 auto;">${drinkIcon(d.type)} ${escapeHtml(d.label||drinkName(d.type))}</div>
+        <input type="time" value="${d.time}" data-time-drink="${d.id}" style="width:auto;flex:0 0 auto;">
+        <input type="number" value="${d.ml}" min="0" step="10" data-ml-drink="${d.id}" style="width:64px;flex:0 0 auto;">
+        <button class="swipe-del" data-del-drink-entry="${d.id}">✕</button>
+      </div>`).join('') : '<div class="empty">Brak wpisów.</div>'}</div>
+  `, (ov)=>{
+    ov.querySelectorAll('[data-time-drink]').forEach(inp=>inp.onchange=async ()=>{
+      if(!inp.value) return;
+      await mutateDay(date, dl2=>{ const e=dl2.drinks.find(x=>x.id===inp.dataset.timeDrink); if(e) e.time=inp.value; });
+      toast('Zaktualizowano godzinę');
+    });
+    ov.querySelectorAll('[data-ml-drink]').forEach(inp=>inp.onchange=async ()=>{
+      await mutateDay(date, dl2=>{ const e=dl2.drinks.find(x=>x.id===inp.dataset.mlDrink); if(e) e.ml=Number(inp.value)||0; });
+      toast('Zaktualizowano ilość');
+    });
+    ov.querySelectorAll('[data-del-drink-entry]').forEach(b=>b.onclick=async ()=>{
+      await mutateDay(date, dl2=>{ dl2.drinks = dl2.drinks.filter(x=>x.id!==b.dataset.delDrinkEntry); });
+      closeSheet(); toast('Usunięto'); await render();
+    });
+  });
 }
 
 function openBowelListSheet(date, dl){
@@ -934,21 +981,35 @@ function openNotesListSheet(date, dl){
 }
 
 function openCialoListSheet(date, dl){
+  const bowelRows = dl.bowel.slice().sort((a,b)=>b.time.localeCompare(a.time));
+  const noteRows = dl.notes.slice().sort((a,b)=>b.time.localeCompare(a.time));
   openSheet(`
     <h3>Ciało — dziś</h3>
     <label class="field-label" style="margin-top:0;">Wypróżnienia</label>
-    <div class="list">${dl.bowel.length? dl.bowel.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(b=>`
+    <div class="list">${bowelRows.length? bowelRows.map(b=>`
       <div class="row">
-        <div style="font-size:14px;">🚽 ${b.time}${b.bristol?' · Bristol '+b.bristol:''}${b.note?' · '+escapeHtml(b.note):''}</div>
+        <div style="font-size:13px;flex:0 0 auto;">🚽${b.bristol?' B'+b.bristol:''}${b.note?' · '+escapeHtml(b.note):''}</div>
+        <input type="time" value="${b.time}" data-time-bowel="${b.id}" style="width:auto;flex:0 0 auto;">
         <button class="swipe-del" data-del-bowel="${b.id}">✕</button>
       </div>`).join('') : '<div class="empty">Brak.</div>'}</div>
     <label class="field-label">Notatki</label>
-    <div class="list">${dl.notes.length? dl.notes.slice().sort((a,b)=>b.time.localeCompare(a.time)).map(n=>`
+    <div class="list">${noteRows.length? noteRows.map(n=>`
       <div class="row">
-        <div style="font-size:14px;">✎ ${n.time} — ${escapeHtml(n.text)}</div>
+        <div style="font-size:13px;">✎ ${escapeHtml(n.text)}</div>
+        <input type="time" value="${n.time}" data-time-note="${n.id}" style="width:auto;flex:0 0 auto;">
         <button class="swipe-del" data-del-note="${n.id}">✕</button>
       </div>`).join('') : '<div class="empty">Brak.</div>'}</div>
   `, (ov)=>{
+    ov.querySelectorAll('[data-time-bowel]').forEach(inp=>inp.onchange=async ()=>{
+      if(!inp.value) return;
+      await mutateDay(date, dl2=>{ const e=dl2.bowel.find(x=>x.id===inp.dataset.timeBowel); if(e) e.time=inp.value; });
+      toast('Zaktualizowano godzinę');
+    });
+    ov.querySelectorAll('[data-time-note]').forEach(inp=>inp.onchange=async ()=>{
+      if(!inp.value) return;
+      await mutateDay(date, dl2=>{ const e=dl2.notes.find(x=>x.id===inp.dataset.timeNote); if(e) e.time=inp.value; });
+      toast('Zaktualizowano godzinę');
+    });
     ov.querySelectorAll('[data-del-bowel]').forEach(b=>b.onclick=async ()=>{
       await mutateDay(date, dl2=>{ dl2.bowel = dl2.bowel.filter(x=>x.id!==b.dataset.delBowel); });
       closeSheet(); toast('Usunięto'); await render();
@@ -1028,12 +1089,19 @@ function openDrinkCustomSheet(date){
   });
 }
 
+const BRISTOL_DESC = {
+  1:'twarde grudki (silne zaparcie)', 2:'zbita, grudkowata', 3:'popękana na powierzchni',
+  4:'gładka, miękka — typowa', 5:'miękkie kawałki z wyraźnymi brzegami',
+  6:'papkowata, postrzępione brzegi', 7:'całkowicie płynna (biegunka)',
+};
+
 function openBowelSheet(date){
   openSheet(`
-    <h3>Wypróżnienie</h3><div class="sub">Skala Bristol (opcjonalnie)</div>
+    <h3>Wypróżnienie</h3><div class="sub">Skala Bristol (opcjonalnie) — typ 1 najtwardszy, typ 7 najbardziej płynny</div>
     <div class="tag-grid" id="bristol-pick">
       ${[1,2,3,4,5,6,7].map(n=>`<button class="tagbtn small" data-v="${n}">${n}</button>`).join('')}
     </div>
+    <div class="note-chip" id="bristol-desc" style="margin-top:8px;min-height:16px;">Dotknij liczbę, by zobaczyć opis</div>
     <label class="field-label">Notatka (opcjonalnie)</label>
     <input type="text" id="bowel-note" placeholder="np. po kawie">
     <div style="margin-top:16px;"><button class="btn" id="bowel-save">Zapisz</button></div>
@@ -1042,6 +1110,7 @@ function openBowelSheet(date){
     ov.querySelectorAll('#bristol-pick button').forEach(b=>b.onclick=()=>{
       ov.querySelectorAll('#bristol-pick button').forEach(x=>x.style.borderColor='var(--line)');
       b.style.borderColor='var(--accent)'; bristol=Number(b.dataset.v);
+      ov.querySelector('#bristol-desc').textContent = `${bristol} — ${BRISTOL_DESC[bristol]}`;
     });
     ov.querySelector('#bowel-save').onclick = async ()=>{
       const note = ov.querySelector('#bowel-note').value.trim();
@@ -1129,7 +1198,16 @@ function openSymptomSheet(date){
     </div>`).join('');
   openSheet(`
     <h3>Dodaj objaw</h3><div class="sub">Wybierz objaw, potem nasilenie</div>
-    ${groupsHtml || '<div class="empty">Brak zdefiniowanych objawów — dodaj je w Ustawieniach.</div>'}
+    ${groupsHtml || '<div class="empty">Brak zdefiniowanych objawów.</div>'}
+    <div style="margin-top:12px;"><button class="tagbtn small" id="sym-new-toggle" style="border-style:dashed;">+ Nowy objaw</button></div>
+    <div id="sym-new-form" style="display:none;margin-top:10px;">
+      <label class="field-label" style="margin-top:0;">Nazwa</label>
+      <input type="text" id="sym-new-name" placeholder="np. Ból głowy">
+      <label class="field-label">Kategoria</label>
+      <input type="text" id="sym-new-group" list="sym-grp-list" placeholder="np. Kardio">
+      <datalist id="sym-grp-list">${Object.keys(groups).map(g=>`<option value="${escapeHtml(g)}">`).join('')}</datalist>
+      <div style="margin-top:10px;"><button class="btn secondary sm" id="sym-new-save">Dodaj i wybierz</button></div>
+    </div>
     <div id="sev-block" style="display:none;margin-top:16px;">
       <label class="field-label">Nasilenie</label>
       <div class="tag-grid" id="sev-pick">
@@ -1143,16 +1221,32 @@ function openSymptomSheet(date){
     </div>
   `, (ov)=>{
     let symptomId=null, severity=2;
-    ov.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{
+    const selectSymptom = (id)=>{
       ov.querySelectorAll('[data-id]').forEach(x=>x.style.borderColor='var(--line)');
-      b.style.borderColor='var(--accent)';
-      symptomId = b.dataset.id;
+      const btn = ov.querySelector(`[data-id="${id}"]`);
+      if(btn) btn.style.borderColor='var(--accent)';
+      symptomId = id;
       ov.querySelector('#sev-block').style.display='block';
-    });
+    };
+    ov.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>selectSymptom(b.dataset.id));
     ov.querySelectorAll('#sev-pick button').forEach(b=>b.onclick=()=>{
       ov.querySelectorAll('#sev-pick button').forEach(x=>x.style.borderColor='var(--line)');
       b.style.borderColor='var(--accent)'; severity=Number(b.dataset.v);
     });
+    ov.querySelector('#sym-new-toggle').onclick = ()=>{
+      ov.querySelector('#sym-new-form').style.display='block';
+      ov.querySelector('#sym-new-toggle').style.display='none';
+    };
+    ov.querySelector('#sym-new-save').onclick = async ()=>{
+      const name = ov.querySelector('#sym-new-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      const group = ov.querySelector('#sym-new-group').value.trim() || 'Inne';
+      const newSym = {id:uid(), name, group};
+      state.cfg.symptoms = state.cfg.symptoms||[]; state.cfg.symptoms.push(newSym);
+      await saveConfig(state.cfg);
+      closeSheet();
+      openSymptomSheet(date);
+    };
     ov.querySelector('#sym-save').onclick = async ()=>{
       if(!symptomId) return;
       const note = ov.querySelector('#sym-note').value.trim();
@@ -1166,22 +1260,141 @@ function openActivitySheet(date){
   const acts = state.cfg.activities||[];
   openSheet(`
     <h3>Dodaj aktywność / zdarzenie</h3>
-    <div class="tag-grid" id="act-pick">${acts.map(a=>`<button class="tagbtn" data-id="${a.id}">${escapeHtml(a.name)}</button>`).join('') || ''}</div>
-    ${acts.length?'':'<div class="empty">Brak zdefiniowanych — dodaj w Ustawieniach.</div>'}
+    <div class="tag-grid" id="act-pick">${acts.map(a=>`<button class="tagbtn" data-id="${a.id}">${escapeHtml(a.name)}</button>`).join('') || ''}
+      <button class="tagbtn" id="act-new-toggle" style="border-style:dashed;">+ Nowa</button>
+    </div>
+    <div id="act-new-form" style="display:none;margin-top:10px;">
+      <label class="field-label" style="margin-top:0;">Nazwa</label>
+      <input type="text" id="act-new-name" placeholder="np. Sauna">
+      <div style="margin-top:10px;"><button class="btn secondary sm" id="act-new-save">Dodaj i wybierz</button></div>
+    </div>
     <label class="field-label">Notatka (opcjonalnie)</label>
     <input type="text" id="act-note">
     <div style="margin-top:16px;"><button class="btn" id="act-save">Zapisz</button></div>
   `, (ov)=>{
     let activityId=null;
-    ov.querySelectorAll('#act-pick button').forEach(b=>b.onclick=()=>{
-      ov.querySelectorAll('#act-pick button').forEach(x=>x.style.borderColor='var(--line)');
+    ov.querySelectorAll('#act-pick [data-id]').forEach(b=>b.onclick=()=>{
+      ov.querySelectorAll('#act-pick [data-id]').forEach(x=>x.style.borderColor='var(--line)');
       b.style.borderColor='var(--accent)'; activityId=b.dataset.id;
     });
+    ov.querySelector('#act-new-toggle').onclick = ()=>{
+      ov.querySelector('#act-new-form').style.display='block';
+      ov.querySelector('#act-new-toggle').style.display='none';
+    };
+    ov.querySelector('#act-new-save').onclick = async ()=>{
+      const name = ov.querySelector('#act-new-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      const newAct = {id:uid(), name};
+      state.cfg.activities = state.cfg.activities||[]; state.cfg.activities.push(newAct);
+      await saveConfig(state.cfg);
+      closeSheet();
+      openActivitySheet(date);
+    };
     ov.querySelector('#act-save').onclick = async ()=>{
       if(!activityId){ toast('Wybierz aktywność'); return; }
       const note = ov.querySelector('#act-note').value.trim();
       await mutateDay(date, dl=>dl.activities.push({id:uid(), activityId, note:note||null, time:nowTime()}));
       closeSheet(); toast('Zapisano'); await render();
+    };
+  });
+}
+
+function openEditMoodSheet(date, e){
+  const dims = [
+    {k:'mood', ic:'😊', lb:'Nastrój'}, {k:'energy', ic:'⚡', lb:'Energia'},
+    {k:'focus', ic:'🎯', lb:'Fokus'}, {k:'productivity', ic:'📈', lb:'Produktywność'},
+  ];
+  openSheet(`
+    <h3>Edytuj wpis</h3>
+    <label class="field-label" style="margin-top:0;">Godzina</label>
+    <input type="time" id="et-time" value="${e.time}">
+    ${dims.map(d=>`
+      <div class="slider-row">
+        <div class="row"><label>${d.ic} ${d.lb}</label><span class="val" id="mv-${d.k}">${e[d.k]}</span></div>
+        <input type="range" id="ms-${d.k}" min="1" max="10" value="${e[d.k]}">
+      </div>`).join('')}
+    <label class="field-label">Notatka</label>
+    <input type="text" id="et-note" value="${escapeHtml(e.note||'')}">
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn danger" id="et-del">Usuń</button>
+      <button class="btn" id="et-save">Zapisz</button>
+    </div>
+  `, (ov)=>{
+    dims.forEach(d=>{ ov.querySelector('#ms-'+d.k).oninput = ev=>ov.querySelector('#mv-'+d.k).textContent = ev.target.value; });
+    ov.querySelector('#et-save').onclick = async ()=>{
+      const time = ov.querySelector('#et-time').value || e.time;
+      const note = ov.querySelector('#et-note').value.trim();
+      const upd = {time, note: note||null};
+      dims.forEach(d=> upd[d.k] = Number(ov.querySelector('#ms-'+d.k).value));
+      await mutateDay(date, dl=>{ const x=dl.mood.find(y=>y.id===e.id); if(x) Object.assign(x, upd); });
+      closeSheet(); toast('Zapisano'); await render();
+    };
+    ov.querySelector('#et-del').onclick = async ()=>{
+      await mutateDay(date, dl=>{ dl.mood = dl.mood.filter(x=>x.id!==e.id); });
+      closeSheet(); toast('Usunięto'); await render();
+    };
+  });
+}
+
+function openEditSymptomEntrySheet(date, e){
+  const s = symById(e.symptomId);
+  openSheet(`
+    <h3>${s?escapeHtml(s.name):'Objaw'}</h3>
+    <label class="field-label" style="margin-top:0;">Godzina</label>
+    <input type="time" id="et-time" value="${e.time}">
+    <label class="field-label">Nasilenie</label>
+    <div class="tag-grid" id="sev-pick">
+      <button class="tagbtn" data-v="1">łagodny</button>
+      <button class="tagbtn" data-v="2">umiarkowany</button>
+      <button class="tagbtn" data-v="3">silny</button>
+    </div>
+    <label class="field-label">Notatka</label>
+    <input type="text" id="et-note" value="${escapeHtml(e.note||'')}">
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn danger" id="et-del">Usuń</button>
+      <button class="btn" id="et-save">Zapisz</button>
+    </div>
+  `, (ov)=>{
+    let severity = e.severity;
+    ov.querySelectorAll('#sev-pick button').forEach(b=>{
+      if(Number(b.dataset.v)===severity) b.style.borderColor='var(--accent)';
+      b.onclick=()=>{ ov.querySelectorAll('#sev-pick button').forEach(x=>x.style.borderColor='var(--line)'); b.style.borderColor='var(--accent)'; severity=Number(b.dataset.v); };
+    });
+    ov.querySelector('#et-save').onclick = async ()=>{
+      const time = ov.querySelector('#et-time').value || e.time;
+      const note = ov.querySelector('#et-note').value.trim();
+      await mutateDay(date, dl=>{ const x=dl.symptoms.find(y=>y.id===e.id); if(x){ x.time=time; x.severity=severity; x.note=note||null; } });
+      closeSheet(); toast('Zapisano'); await render();
+    };
+    ov.querySelector('#et-del').onclick = async ()=>{
+      await mutateDay(date, dl=>{ dl.symptoms = dl.symptoms.filter(x=>x.id!==e.id); });
+      closeSheet(); toast('Usunięto'); await render();
+    };
+  });
+}
+
+function openEditActivityEntrySheet(date, e){
+  const a = actById(e.activityId);
+  openSheet(`
+    <h3>${a?escapeHtml(a.name):'Aktywność'}</h3>
+    <label class="field-label" style="margin-top:0;">Godzina</label>
+    <input type="time" id="et-time" value="${e.time}">
+    <label class="field-label">Notatka</label>
+    <input type="text" id="et-note" value="${escapeHtml(e.note||'')}">
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn danger" id="et-del">Usuń</button>
+      <button class="btn" id="et-save">Zapisz</button>
+    </div>
+  `, (ov)=>{
+    ov.querySelector('#et-save').onclick = async ()=>{
+      const time = ov.querySelector('#et-time').value || e.time;
+      const note = ov.querySelector('#et-note').value.trim();
+      await mutateDay(date, dl=>{ const x=dl.activities.find(y=>y.id===e.id); if(x){ x.time=time; x.note=note||null; } });
+      closeSheet(); toast('Zapisano'); await render();
+    };
+    ov.querySelector('#et-del').onclick = async ()=>{
+      await mutateDay(date, dl=>{ dl.activities = dl.activities.filter(x=>x.id!==e.id); });
+      closeSheet(); toast('Usunięto'); await render();
     };
   });
 }
@@ -1904,7 +2117,7 @@ function wireSettings(){
 }
 
 // ---- settings forms (sheets) ----
-function openMedForm(existing){
+function openMedForm(existing, afterSave){
   openSheet(`
     <h3>${existing?'Edytuj lek':'Nowy lek / suplement'}</h3>
     <label class="field-label" style="margin-top:0;">Nazwa</label>
@@ -1913,6 +2126,11 @@ function openMedForm(existing){
     <input type="text" id="f-dose" value="${existing?escapeHtml(existing.dose||''):''}" placeholder="np. 20mg">
     <label class="field-label">Harmonogram</label>
     <input type="text" id="f-sched" value="${existing?escapeHtml(existing.schedule||''):''}" placeholder="np. rano, codziennie">
+    <label class="field-label">Typ</label>
+    <select id="f-type">
+      <option value="daily" ${!existing||existing.medType!=='prn'?'selected':''}>Codzienny (liczy się do serii "wszystkie leki wzięte")</option>
+      <option value="prn" ${existing&&existing.medType==='prn'?'selected':''}>Doraźny — w razie potrzeby (np. przeciwbólowy)</option>
+    </select>
     <label class="field-label"><input type="checkbox" id="f-active" ${(!existing||existing.active!==false)?'checked':''} style="width:auto;margin-right:6px;">Aktywny (widoczny na Dziś)</label>
     <div style="margin-top:16px;"><button class="btn" id="f-save">Zapisz</button></div>
   `, (ov)=>{
@@ -1922,9 +2140,12 @@ function openMedForm(existing){
       const dose = ov.querySelector('#f-dose').value.trim();
       const schedule = ov.querySelector('#f-sched').value.trim();
       const active = ov.querySelector('#f-active').checked;
-      if(existing){ Object.assign(existing, {name, dose, schedule, active}); }
-      else { state.cfg.medications = state.cfg.medications||[]; state.cfg.medications.push({id:uid(), name, dose, schedule, active}); }
-      await saveConfig(state.cfg); closeSheet(); toast('Zapisano'); await render();
+      const medType = ov.querySelector('#f-type').value;
+      let saved;
+      if(existing){ Object.assign(existing, {name, dose, schedule, active, medType}); saved = existing; }
+      else { saved = {id:uid(), name, dose, schedule, active, medType}; state.cfg.medications = state.cfg.medications||[]; state.cfg.medications.push(saved); }
+      await saveConfig(state.cfg); closeSheet(); toast('Zapisano');
+      if(afterSave) await afterSave(saved); else await render();
     };
   });
 }
