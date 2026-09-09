@@ -2042,7 +2042,7 @@ function settingsGeneralHtml(){
 
 function settingsExportHtml(){
   return `<div class="card">
-    <label class="field-label" style="margin-top:0;">Zakres eksportu</label>
+    <label class="field-label" style="margin-top:0;">Zakres eksportu (do analizy)</label>
     <div class="seg" id="exp-range">
       <button data-r="7" class="active">7 dni</button>
       <button data-r="30">30 dni</button>
@@ -2053,6 +2053,21 @@ function settingsExportHtml(){
       <button class="btn secondary" id="exp-md">Eksport Markdown</button>
     </div>
     <p class="note-chip" style="margin-top:10px;">Markdown pasuje do formatu tego projektu (nagłówek, tabela, wnioski) — możesz go dołożyć do dokumentacji i poprosić Claude o analizę korelacji z pełną historią medyczną.</p>
+  </div>
+
+  <div class="card" style="margin-top:14px;">
+    <label class="field-label" style="margin-top:0;">Kopia zapasowa (pełna, do przywrócenia)</label>
+    <p class="note-chip" style="margin-bottom:10px;">Dane żyją tylko w tej przeglądarce na tym urządzeniu — nie migrują same przy zmianie telefonu. Rób to co jakiś czas, szczególnie przed zmianą telefonu.</p>
+    <button class="btn" id="exp-backup">Eksportuj pełną kopię (JSON)</button>
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px;">
+      <label class="field-label" style="margin-top:0;">Przywróć z pliku kopii</label>
+      <input type="file" id="import-file" accept="application/json,.json">
+      <label class="field-label" style="display:flex;align-items:center;gap:6px;margin-top:10px;">
+        <input type="checkbox" id="import-replace-config" checked style="width:auto;">Zastąp też ustawienia (leki, objawy, kategorie, cele)
+      </label>
+      <button class="btn secondary" id="import-btn" style="margin-top:10px;">Importuj / przywróć</button>
+      <p class="note-chip" style="margin-top:8px;">Wpisy z pliku dokładane są do tego, co już masz (bez duplikatów) — nic z bieżących danych nie jest kasowane.</p>
+    </div>
   </div>`;
 }
 
@@ -2113,6 +2128,22 @@ function wireSettings(){
   let expRange = 7;
   expRangeBtns.forEach(b=>b.onclick=()=>{ expRangeBtns.forEach(x=>x.classList.remove('active')); b.classList.add('active'); expRange = b.dataset.r==='all'?'all':Number(b.dataset.r); });
   const csvBtn = $('#exp-csv'); if(csvBtn) csvBtn.onclick = ()=>exportData('csv', expRange);
+
+  const backupBtn = $('#exp-backup');
+  if(backupBtn) backupBtn.onclick = ()=>exportFullBackup();
+
+  const importBtn = $('#import-btn');
+  if(importBtn) importBtn.onclick = async ()=>{
+    const fileInp = $('#import-file');
+    if(!fileInp.files || !fileInp.files[0]){ toast('Wybierz plik kopii zapasowej'); return; }
+    const replaceConfig = $('#import-replace-config').checked;
+    importBtn.disabled = true; importBtn.textContent = 'Importowanie…';
+    try{
+      await importFullBackup(fileInp.files[0], replaceConfig);
+    } finally {
+      importBtn.disabled = false; importBtn.textContent = 'Importuj / przywróć';
+    }
+  };
   const mdBtn = $('#exp-md'); if(mdBtn) mdBtn.onclick = ()=>exportData('md', expRange);
 }
 
@@ -2226,6 +2257,56 @@ function openDrinkForm(existing){
 }
 
 // ---- export ----
+async function exportFullBackup(){
+  let keys=[];
+  try{ const r = await storageShim.list('month:'); keys = r?r.keys:[]; }catch(e){ keys=[]; }
+  const months = {};
+  for(const k of keys){
+    const mk = k.replace('month:','');
+    months[mk] = await loadMonth(mk);
+  }
+  const backup = { app:'dziennik-zdrowia', version:1, exportedAt:new Date().toISOString(), config: state.cfg, months };
+  downloadFile(`dziennik-zdrowia-backup_${effectiveDateStr(state.cfg)}.json`, JSON.stringify(backup, null, 2), 'application/json');
+  toast('Wyeksportowano pełną kopię');
+}
+
+async function importFullBackup(file, replaceConfig){
+  let text;
+  try{ text = await file.text(); }catch(e){ toast('Nie udało się odczytać pliku'); return; }
+  let backup;
+  try{ backup = JSON.parse(text); }catch(e){ toast('To nie jest poprawny plik JSON'); return; }
+  if(!backup || typeof backup.months!=='object'){ toast('Niepoprawny format kopii zapasowej'); return; }
+
+  let addedCount = 0;
+  for(const mk of Object.keys(backup.months)){
+    const incoming = backup.months[mk] || {};
+    const current = await loadMonth(mk);
+    for(const dk of Object.keys(incoming)){
+      if(!current[dk]) current[dk] = emptyDayLog();
+      const curDay = current[dk];
+      const inDay = incoming[dk] || {};
+      ['drinks','bowel','meds','symptoms','mood','activities','notes'].forEach(field=>{
+        if(!curDay[field]) curDay[field] = [];
+        if(!Array.isArray(inDay[field])) return;
+        const existingIds = new Set(curDay[field].map(x=>x.id));
+        inDay[field].forEach(item=>{
+          if(item && item.id && !existingIds.has(item.id)){ curDay[field].push(item); addedCount++; }
+        });
+      });
+      if(inDay.sleep && !curDay.sleep) curDay.sleep = inDay.sleep;
+    }
+    await saveMonth(mk, current);
+  }
+
+  if(replaceConfig && backup.config){
+    Object.assign(state.cfg, backup.config);
+    await saveConfig(state.cfg);
+  }
+
+  toast(`Przywrócono: ${addedCount} nowych wpisów`);
+  await render();
+}
+
 function downloadFile(filename, content, mime){
   try{
     const blob = new Blob([content], {type:mime});
