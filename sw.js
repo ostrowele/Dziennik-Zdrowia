@@ -1,7 +1,7 @@
 // Dziennik Zdrowia — minimal offline app-shell cache.
 // All real data lives in localStorage on-device; this only caches the
 // static shell (HTML/manifest/icons) so the app opens without network.
-const CACHE = 'dziennik-zdrowia-v6';
+const CACHE = 'dziennik-zdrowia-v9';
 const SHELL = [
   './',
   './index.html',

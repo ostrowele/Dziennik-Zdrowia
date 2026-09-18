@@ -648,6 +648,18 @@ async function viewDashboard(){
   }).join('');
   const goalsHtml = goalLines ? `<div class="card" style="margin-top:10px;">${goalLines}</div>` : '';
 
+  const templates = state.cfg.templates||[];
+  const templatesHtml = templates.length ? `
+    <section class="block">
+      <div class="block-head"><h2>Szablony</h2>
+        <button class="link" data-act="goto-settings-templates">edytuj</button>
+      </div>
+      <div class="quick-grid">${templates.map(t=>`
+        <button class="qbtn" data-act="run-template" data-id="${t.id}">
+          <span class="ic">${t.icon||'⭐'}</span><span class="lb">${escapeHtml(t.name)}</span>
+        </button>`).join('')}</div>
+    </section>` : '';
+
   let streakHtml = '';
   if(isToday){
     const medsStreak = await computeMedsStreak();
@@ -757,6 +769,8 @@ async function viewDashboard(){
 
     ${streakHtml}
 
+    ${templatesHtml}
+
     <section class="block">
       <div class="block-head"><h2>Napoje</h2>
         <button class="link" data-act="edit-drinks">edytuj</button>
@@ -862,6 +876,17 @@ function wireDashboard(){
 
   const quickAddMed = $('[data-act="quick-add-med"]');
   if(quickAddMed) quickAddMed.onclick = ()=>openMedForm();
+
+  $$('[data-act="run-template"]').forEach(b=>b.onclick=async ()=>{
+    const t = (state.cfg.templates||[]).find(x=>x.id===b.dataset.id);
+    if(!t) return;
+    await runTemplate(date, t);
+    toast(`${t.icon||''} ${t.name} — zalogowano ${t.items.length} poz.`);
+    await render();
+  });
+  $$('[data-act="goto-settings-templates"]').forEach(b=>b.onclick=async ()=>{
+    state.view='settings'; state.settingsTab='templates'; renderTabbar(); await render();
+  });
 
   const addMood = $('[data-act="add-mood"]');
   if(addMood) addMood.onclick = ()=>openMoodSheet(date);
@@ -1205,7 +1230,7 @@ function openSymptomSheet(date){
       <input type="text" id="sym-new-name" placeholder="np. Ból głowy">
       <label class="field-label">Kategoria</label>
       <input type="text" id="sym-new-group" list="sym-grp-list" placeholder="np. Kardio">
-      <datalist id="sym-grp-list">${Object.keys(groups).map(g=>`<option value="${escapeHtml(g)}">`).join('')}</datalist>
+      <datalist id="sym-grp-list">${getSymptomGroups().map(g=>`<option value="${escapeHtml(g)}">`).join('')}</datalist>
       <div style="margin-top:10px;"><button class="btn secondary sm" id="sym-new-save">Dodaj i wybierz</button></div>
     </div>
     <div id="sev-block" style="display:none;margin-top:16px;">
@@ -1548,19 +1573,39 @@ const CORR_PAIRS = [
 ];
 
 // ---- tiny SVG chart helpers ----
+function findAnnotationX(annotations, agg, xFor){
+  // Maps each annotation whose date is within the visible range to the nearest
+  // agg index (so it lines up even if that exact date has no data point).
+  if(!annotations || !annotations.length || !agg.length) return [];
+  const dates = agg.map(a=>a.date);
+  return annotations.map(an=>{
+    let idx = dates.indexOf(an.date);
+    if(idx===-1){
+      if(an.date < dates[0] || an.date > dates[dates.length-1]) return null;
+      idx = dates.findIndex(d=>d>=an.date);
+      if(idx===-1) idx = dates.length-1;
+    }
+    return {...an, x: xFor(idx)};
+  }).filter(Boolean);
+}
+
 function svgMultiLine(agg, seriesDefs, opts={}){
-  const W = opts.width||320, H = opts.height||140, pad=18;
+  const W = opts.width||320, H = opts.height||150;
+  const padL=28, padR=10, padT=14, padB=20;
   const n = agg.length;
   if(n<2) return `<div class="empty">Za mało danych do wykresu.</div>`;
   const minY = opts.minY??1, maxY = opts.maxY??10;
-  const xStep = (W-2*pad)/(n-1);
-  const yFor = v => H-pad - ((v-minY)/(maxY-minY))*(H-2*pad);
-  const xFor = i => pad + i*xStep;
+  const xStep = (W-padL-padR)/(n-1);
+  const yFor = v => H-padB - ((v-minY)/(maxY-minY))*(H-padT-padB);
+  const xFor = i => padL + i*xStep;
 
-  let gridLines = '';
-  for(let g=minY; g<=maxY; g+= (maxY-minY)/4){
+  let gridLines = '', yLabels = '';
+  const steps = 4;
+  for(let s=0; s<=steps; s++){
+    const g = minY + (maxY-minY)*s/steps;
     const y = yFor(g);
-    gridLines += `<line x1="${pad}" y1="${y}" x2="${W-pad}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+    gridLines += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+    yLabels += `<text x="${padL-5}" y="${(y+3).toFixed(1)}" font-size="9" fill="var(--muted-2)" text-anchor="end">${Math.round(g)}</text>`;
   }
 
   let paths = '';
@@ -1580,29 +1625,62 @@ function svgMultiLine(agg, seriesDefs, opts={}){
   let xlabels = '';
   agg.forEach((row,i)=>{
     if(i%everyN===0 || i===n-1){
-      xlabels += `<text x="${xFor(i)}" y="${H-3}" font-size="9" fill="var(--muted-2)" text-anchor="middle">${row.date.slice(5)}</text>`;
+      xlabels += `<text x="${xFor(i).toFixed(1)}" y="${H-4}" font-size="9" fill="var(--muted-2)" text-anchor="middle">${row.date.slice(5)}</text>`;
     }
   });
 
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${gridLines}${paths}${xlabels}</svg>`;
+  const annPoints = findAnnotationX(opts.annotations, agg, xFor);
+  let annSvg = '';
+  annPoints.forEach(a=>{
+    annSvg += `<line x1="${a.x.toFixed(1)}" y1="${padT}" x2="${a.x.toFixed(1)}" y2="${H-padB}" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.75"/>`;
+    annSvg += `<circle cx="${a.x.toFixed(1)}" cy="${padT}" r="3" fill="var(--accent)"><title>${escapeHtml(a.date+' — '+a.text)}</title></circle>`;
+  });
+
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${gridLines}${yLabels}${annSvg}${paths}${xlabels}</svg>`;
+}
+
+function annotationCaption(annotations, agg){
+  const points = findAnnotationX(annotations, agg, i=>i); // x unused here, just filtering to range
+  if(!points.length) return '';
+  return `<p class="note-chip" style="margin-top:6px;padding:0 4px;">📍 ${points.map(a=>`${a.date.slice(5)} — ${escapeHtml(a.text)}`).join(' · ')}</p>`;
 }
 
 function svgBars(agg, key, opts={}){
-  const W = opts.width||320, H = opts.height||90, pad=14;
+  const W = opts.width||320, H = opts.height||110;
+  const padL=22, padR=8, padT=16, padB=18;
   const n = agg.length;
   if(n<1) return '';
   const vals = agg.map(a=>a[key]||0);
   const maxV = Math.max(1, ...vals);
-  const bw = (W-2*pad)/n;
-  let bars='';
+  const bw = (W-padL-padR)/n;
+  const yFor = v => H-padB - (v/maxV)*(H-padT-padB);
+
+  let gridLines='', yLabels='';
+  [0, 0.5, 1].forEach(f=>{
+    const g = maxV*f, y = yFor(g);
+    gridLines += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+    yLabels += `<text x="${padL-5}" y="${(y+3).toFixed(1)}" font-size="9" fill="var(--muted-2)" text-anchor="end">${Number.isInteger(g)?g:g.toFixed(1)}</text>`;
+  });
+
+  let bars='', valLabels='';
   agg.forEach((row,i)=>{
     const v = row[key]||0;
-    const h = (v/maxV)*(H-2*pad);
-    const x = pad + i*bw + bw*0.15;
-    const y = H-pad-h;
-    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw*0.7).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${opts.color||'var(--accent)'}"/>`;
+    const h = (v/maxV)*(H-padT-padB);
+    const x = padL + i*bw + bw*0.15;
+    const y = H-padB-h;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw*0.7).toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="2" fill="${opts.color||'var(--accent)'}"/>`;
+    if(v>0 && bw>14) valLabels += `<text x="${(x+bw*0.35).toFixed(1)}" y="${(y-3).toFixed(1)}" font-size="8.5" fill="var(--muted)" text-anchor="middle">${v}</text>`;
   });
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${bars}</svg>`;
+
+  const everyN = Math.max(1, Math.floor(n/5));
+  let xlabels = '';
+  agg.forEach((row,i)=>{
+    if(i%everyN===0 || i===n-1){
+      xlabels += `<text x="${(padL+i*bw+bw*0.5).toFixed(1)}" y="${H-3}" font-size="8.5" fill="var(--muted-2)" text-anchor="middle">${row.date.slice(5)}</text>`;
+    }
+  });
+
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${gridLines}${yLabels}${bars}${valLabels}${xlabels}</svg>`;
 }
 
 // ---- time-of-day helpers ----
@@ -1668,8 +1746,8 @@ function buildInsightSentences(agg, days){
 
 // ---- intraday (single-day) timeline chart: mood lines + event markers on a 0–24h axis ----
 function svgIntraday(dayLog, opts={}){
-  const W = opts.width||320, H = opts.height||190, pad=18, markerY = H-40;
-  const xFor = h => pad + (h/24)*(W-2*pad);
+  const W = opts.width||320, H = opts.height||190, padL=24, padR=10, markerY = H-40;
+  const xFor = h => padL + (h/24)*(W-padL-padR);
   const top=14, bottom=markerY-12;
   const yFor = v => bottom - ((v-1)/9)*(bottom-top);
 
@@ -1687,6 +1765,11 @@ function svgIntraday(dayLog, opts={}){
     grid += `<line x1="${xFor(h).toFixed(1)}" y1="10" x2="${xFor(h).toFixed(1)}" y2="${markerY-8}" stroke="var(--line)" stroke-width="1"/>`;
     grid += `<text x="${xFor(h).toFixed(1)}" y="${markerY+22}" font-size="9" fill="var(--muted-2)" text-anchor="middle">${h}:00</text>`;
   }
+  let yLabels = '';
+  [1,5,10].forEach(v=>{
+    yLabels += `<text x="${padL-5}" y="${(yFor(v)+3).toFixed(1)}" font-size="9" fill="var(--muted-2)" text-anchor="end">${v}</text>`;
+    yLabels += `<line x1="${padL}" y1="${yFor(v).toFixed(1)}" x2="${W-padR}" y2="${yFor(v).toFixed(1)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="${v===1||v===10?'0':'2,3'}"/>`;
+  });
 
   const dims = [
     {key:'energy', color:'#5fa8a0'},
@@ -1714,13 +1797,25 @@ function svgIntraday(dayLog, opts={}){
     markers += `<text x="${xFor(md.h).toFixed(1)}" y="${markerY+2}" font-size="12" text-anchor="middle">${md.ic}</text>`;
   });
 
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${grid}${paths}${markers}</svg>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${grid}${yLabels}${paths}${markers}</svg>`;
 }
 
 function statsSegHtml(range){
   const opts = [['today','Dziś'],[7,'7 dni'],[30,'30 dni'],[90,'90 dni'],['all','Wszystko']];
   return `<div class="seg" style="margin-bottom:18px;flex-wrap:wrap;">${opts.map(([v,lb])=>
     `<button data-range="${v}" class="${String(range)===String(v)?'active':''}">${lb}</button>`).join('')}</div>`;
+}
+
+function heatmapLegendHtml(colorFn, lowVal, highVal, lowLabel, highLabel){
+  const steps = 5;
+  let swatches = '';
+  for(let i=0;i<steps;i++){
+    const v = lowVal + (highVal-lowVal)*i/(steps-1);
+    swatches += `<span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:${colorFn(v)};"></span>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:10.5px;color:var(--muted);">
+    <span>${lowLabel}</span><div style="display:flex;gap:2px;">${swatches}</div><span>${highLabel}</span>
+  </div>`;
 }
 
 function svgHeatmap(agg, opts){
@@ -1863,16 +1958,18 @@ async function viewStats(){
       <div class="block-head"><h2>Heatmapa — nastrój</h2></div>
       <div class="chart-wrap" style="overflow-x:auto;">
         ${svgHeatmap(agg, {valueFn:d=>d.moodAvg, colorFn:v=> v==null?'var(--surface-2)':`rgba(127,166,92,${(0.15+0.85*Math.min(1,Math.max(0,(v-1)/9))).toFixed(2)})`})}
+        ${heatmapLegendHtml(v=>`rgba(127,166,92,${(0.15+0.85*Math.min(1,Math.max(0,(v-1)/9))).toFixed(2)})`, 1, 10, 'niski', 'wysoki')}
       </div>
-      <p class="note-chip" style="margin-top:6px;padding:0 4px;">Ostatnie ${Math.min(182,agg.length)} dni · puste = brak wpisu, ciemniejsza zieleń = wyższy nastrój.</p>
+      <p class="note-chip" style="margin-top:6px;padding:0 4px;">Ostatnie ${Math.min(182,agg.length)} dni · puste pole = brak wpisu tego dnia.</p>
     </section>
 
     <section class="block">
       <div class="block-head"><h2>Heatmapa — objawy</h2></div>
       <div class="chart-wrap" style="overflow-x:auto;">
         ${svgHeatmap(agg, {valueFn:d=>d.symptomCount, colorFn:c=> !c?'var(--surface-2)':`rgba(193,85,74,${(0.25+0.75*Math.min(1,c/5)).toFixed(2)})`})}
+        ${heatmapLegendHtml(c=>c===0?'var(--surface-2)':`rgba(193,85,74,${(0.25+0.75*Math.min(1,c/5)).toFixed(2)})`, 0, 5, '0 objawów', '5+')}
       </div>
-      <p class="note-chip" style="margin-top:6px;padding:0 4px;">Intensywniejszy czerwony = więcej zgłoszonych objawów danego dnia.</p>
+      <p class="note-chip" style="margin-top:6px;padding:0 4px;">Puste pole = brak wpisu (nie: "zero objawów potwierdzone").</p>
     </section>
     `}
 
@@ -1884,19 +1981,25 @@ async function viewStats(){
           {key:'energyAvg', color:'#5fa8a0'},
           {key:'focusAvg', color:'#7fa65c'},
           {key:'prodAvg', color:'#8b92a0'},
-        ])}
+        ], {annotations: state.cfg.annotations})}
         <div class="chart-legend">
           <span><i style="background:#c98a4b"></i>nastrój</span>
           <span><i style="background:#5fa8a0"></i>energia</span>
           <span><i style="background:#7fa65c"></i>fokus</span>
           <span><i style="background:#8b92a0"></i>produktywność</span>
+          <span>skala 1–10</span>
         </div>
       </div>
+      ${annotationCaption(state.cfg.annotations, agg)}
     </section>
 
     <section class="block">
       <div class="block-head"><h2>Jakość snu</h2></div>
-      <div class="chart-wrap">${svgMultiLine(agg, [{key:'sleepQuality', color:'#5fa8a0'}])}</div>
+      <div class="chart-wrap">
+        ${svgMultiLine(agg, [{key:'sleepQuality', color:'#5fa8a0'}], {annotations: state.cfg.annotations})}
+        <div class="chart-legend"><span>skala 1–10</span></div>
+      </div>
+      ${annotationCaption(state.cfg.annotations, agg)}
     </section>
 
     <section class="block">
@@ -1931,7 +2034,7 @@ async function viewSettings(){
   const tab = state.settingsTab || 'meds';
   const tabs = [
     {id:'meds', lb:'Leki'}, {id:'symptoms', lb:'Objawy'}, {id:'activities', lb:'Aktywności'},
-    {id:'drinks', lb:'Napoje'}, {id:'general', lb:'Ogólne'}, {id:'export', lb:'Eksport'},
+    {id:'drinks', lb:'Napoje'}, {id:'templates', lb:'Szablony'}, {id:'general', lb:'Ogólne'}, {id:'export', lb:'Eksport'},
   ];
   const segHtml = `<div class="seg" style="margin-bottom:18px;flex-wrap:wrap;">${tabs.map(t=>
     `<button data-stab="${t.id}" class="${tab===t.id?'active':''}">${t.lb}</button>`).join('')}</div>`;
@@ -1941,6 +2044,7 @@ async function viewSettings(){
   else if(tab==='symptoms') body = settingsSymptomsHtml();
   else if(tab==='activities') body = settingsListHtml('activities','Aktywność / zdarzenie');
   else if(tab==='drinks') body = settingsDrinksHtml();
+  else if(tab==='templates') body = settingsTemplatesHtml();
   else if(tab==='general') body = settingsGeneralHtml();
   else if(tab==='export') body = settingsExportHtml();
 
@@ -1970,24 +2074,34 @@ function settingsMedsHtml(){
   </div>`;
 }
 
+function getSymptomGroups(){
+  const explicit = state.cfg.symptomGroups||[];
+  const used = (state.cfg.symptoms||[]).map(s=>s.group||'Inne');
+  return [...new Set([...explicit, ...used])];
+}
+
 function settingsSymptomsHtml(){
   const syms = state.cfg.symptoms||[];
   const groups = {};
+  getSymptomGroups().forEach(g=>{ groups[g] = []; }); // ensure empty categories still show
   syms.forEach(s=>{ (groups[s.group||'Inne']=groups[s.group||'Inne']||[]).push(s); });
   const html = Object.keys(groups).map(g=>`
     <div class="settings-group">
       <h3>${escapeHtml(g)}</h3>
-      <div class="list">${groups[g].map(s=>`
+      <div class="list">${groups[g].length ? groups[g].map(s=>`
         <div class="row">
           <div style="font-size:14px;">${escapeHtml(s.name)}</div>
           <div style="display:flex;gap:6px;">
             <button class="btn ghost sm" data-edit-sym="${s.id}">edytuj</button>
             <button class="swipe-del" data-del-sym="${s.id}">✕</button>
           </div>
-        </div>`).join('')}</div>
+        </div>`).join('') : '<div class="empty">Pusta kategoria.</div>'}</div>
     </div>`).join('');
   return `${html || '<div class="empty">Brak objawów.</div>'}
-    <div style="margin-top:4px;"><button class="btn secondary" data-add-sym="1">+ Dodaj objaw</button></div>`;
+    <div class="btn-row" style="margin-top:4px;">
+      <button class="btn secondary" data-add-sym="1">+ Dodaj objaw</button>
+      <button class="btn ghost" data-manage-groups="1">Kategorie</button>
+    </div>`;
 }
 
 function settingsListHtml(catKey, singularLabel){
@@ -2032,12 +2146,122 @@ function settingsDrinksHtml(){
 }
 
 function settingsGeneralHtml(){
+  const anns = (state.cfg.annotations||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
   return `<div class="card">
     <label class="field-label" style="margin-top:0;">Granica dnia (godzina)</label>
     <p class="note-chip" style="margin-bottom:8px;">Wpisy przed tą godziną liczą się jeszcze do poprzedniego dnia — przydatne przy nieregularnym śnie.</p>
     <input type="number" id="dbh" min="0" max="12" value="${state.cfg.dayBoundaryHour ?? 4}">
     <div style="margin-top:14px;"><button class="btn" id="dbh-save">Zapisz</button></div>
+  </div>
+
+  <div class="card" style="margin-top:14px;">
+    <label class="field-label" style="margin-top:0;">Adnotacje na wykresach</label>
+    <p class="note-chip" style="margin-bottom:10px;">Oznacz zdarzenie (np. zmianę dawki leku) — pojawi się jako pionowa linia na wykresach w Statystykach.</p>
+    <div class="list">${anns.length ? anns.map(a=>`
+      <div class="row">
+        <div style="font-size:14px;">${a.date} — ${escapeHtml(a.text)}</div>
+        <button class="swipe-del" data-del-ann="${a.id}">✕</button>
+      </div>`).join('') : '<div class="empty">Brak adnotacji.</div>'}</div>
+    <label class="field-label">Data</label>
+    <input type="date" id="ann-date" value="${effectiveDateStr(state.cfg)}">
+    <label class="field-label">Opis</label>
+    <input type="text" id="ann-text" placeholder="np. Zmiana dawki Mounjaro na 7,5mg">
+    <div style="margin-top:10px;"><button class="btn secondary sm" id="ann-save">Dodaj adnotację</button></div>
   </div>`;
+}
+
+function settingsTemplatesHtml(){
+  const tmpls = state.cfg.templates||[];
+  const rows = tmpls.map(t=>`
+    <div class="row">
+      <div style="font-size:14.5px;">${t.icon||'⭐'} ${escapeHtml(t.name)} <span class="note-chip">${t.items.length} poz.</span></div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn ghost sm" data-edit-tmpl="${t.id}">edytuj</button>
+        <button class="swipe-del" data-del-tmpl="${t.id}">✕</button>
+      </div>
+    </div>`).join('');
+  return `<div class="settings-group">
+    <p class="note-chip" style="margin-bottom:10px;">Szablon loguje kilka rzeczy naraz jednym tapem na Dziś — np. "Poranne leki" = wszystkie codzienne leki + kawa.</p>
+    <div class="list">${rows || '<div class="empty">Brak szablonów.</div>'}</div>
+    <div style="margin-top:12px;"><button class="btn secondary" data-add-tmpl="1">+ Nowy szablon</button></div>
+  </div>`;
+}
+
+function openTemplateForm(existing){
+  let items = existing ? JSON.parse(JSON.stringify(existing.items||[])) : [];
+  const meds = state.cfg.medications||[];
+  const drinks = state.cfg.drinkTypes||[];
+  const acts = state.cfg.activities||[];
+
+  const renderItemsList = ()=> items.map((it,i)=>{
+    let label = '?';
+    if(it.kind==='med'){ const m=medById(it.refId); label = `💊 ${m?escapeHtml(m.name):'?'}`; }
+    else if(it.kind==='drink'){ const d=cfgDrinkType(it.refId); label = `${d.icon} ${escapeHtml(d.name)}${it.ml?' ('+it.ml+'ml)':''}`; }
+    else if(it.kind==='activity'){ const a=actById(it.refId); label = `🏃 ${a?escapeHtml(a.name):'?'}`; }
+    return `<div class="row"><div style="font-size:14px;">${label}</div><button class="swipe-del" data-rm-item="${i}">✕</button></div>`;
+  }).join('') || '<div class="empty">Brak pozycji — dodaj poniżej.</div>';
+
+  openSheet(`
+    <h3>${existing?'Edytuj szablon':'Nowy szablon'}</h3>
+    <label class="field-label" style="margin-top:0;">Nazwa</label>
+    <input type="text" id="t-name" value="${existing?escapeHtml(existing.name):''}" placeholder="np. Poranne leki">
+    <label class="field-label">Ikona (emoji)</label>
+    <input type="text" id="t-icon" value="${existing?existing.icon||'⭐':''}" placeholder="⭐" maxlength="4">
+    <label class="field-label">Pozycje (wykonywane razem, jednym tapem)</label>
+    <div class="list" id="t-items"></div>
+    <div class="tag-grid" style="margin-top:10px;">
+      <button class="tagbtn small" id="t-add-med">+ Lek</button>
+      <button class="tagbtn small" id="t-add-drink">+ Napój</button>
+      <button class="tagbtn small" id="t-add-act">+ Aktywność</button>
+    </div>
+    <div id="t-pick-area" style="margin-top:10px;"></div>
+    <div style="margin-top:16px;"><button class="btn" id="t-save">Zapisz szablon</button></div>
+  `, (ov)=>{
+    const refreshItems = ()=>{
+      ov.querySelector('#t-items').innerHTML = renderItemsList();
+      ov.querySelectorAll('[data-rm-item]').forEach(b=>b.onclick=()=>{ items.splice(Number(b.dataset.rmItem),1); refreshItems(); });
+    };
+    refreshItems();
+    ov.querySelector('#t-add-med').onclick = ()=>{
+      ov.querySelector('#t-pick-area').innerHTML = meds.length
+        ? `<div class="tag-grid">${meds.map(m=>`<button class="tagbtn small" data-pick-med="${m.id}">${escapeHtml(m.name)}</button>`).join('')}</div>`
+        : '<div class="note-chip">Brak leków — dodaj najpierw w zakładce Leki.</div>';
+      ov.querySelectorAll('[data-pick-med]').forEach(b=>b.onclick=()=>{ items.push({kind:'med', refId:b.dataset.pickMed}); ov.querySelector('#t-pick-area').innerHTML=''; refreshItems(); });
+    };
+    ov.querySelector('#t-add-drink').onclick = ()=>{
+      ov.querySelector('#t-pick-area').innerHTML = `<div class="tag-grid">${drinks.map(d=>`<button class="tagbtn small" data-pick-drink="${d.id}">${d.icon} ${escapeHtml(d.name)}</button>`).join('')}</div>`;
+      ov.querySelectorAll('[data-pick-drink]').forEach(b=>b.onclick=()=>{
+        const d=cfgDrinkType(b.dataset.pickDrink); items.push({kind:'drink', refId:d.id, ml:d.defaultMl});
+        ov.querySelector('#t-pick-area').innerHTML=''; refreshItems();
+      });
+    };
+    ov.querySelector('#t-add-act').onclick = ()=>{
+      ov.querySelector('#t-pick-area').innerHTML = acts.length
+        ? `<div class="tag-grid">${acts.map(a=>`<button class="tagbtn small" data-pick-act="${a.id}">${escapeHtml(a.name)}</button>`).join('')}</div>`
+        : '<div class="note-chip">Brak aktywności zdefiniowanych.</div>';
+      ov.querySelectorAll('[data-pick-act]').forEach(b=>b.onclick=()=>{ items.push({kind:'activity', refId:b.dataset.pickAct}); ov.querySelector('#t-pick-area').innerHTML=''; refreshItems(); });
+    };
+    ov.querySelector('#t-save').onclick = async ()=>{
+      const name = ov.querySelector('#t-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      if(!items.length){ toast('Dodaj przynajmniej jedną pozycję'); return; }
+      const icon = ov.querySelector('#t-icon').value.trim() || '⭐';
+      if(existing){ Object.assign(existing, {name, icon, items}); }
+      else { state.cfg.templates = state.cfg.templates||[]; state.cfg.templates.push({id:uid(), name, icon, items}); }
+      await saveConfig(state.cfg); closeSheet(); toast('Zapisano szablon'); await render();
+    };
+  });
+}
+
+async function runTemplate(date, tmpl){
+  await mutateDay(date, dl=>{
+    tmpl.items.forEach(it=>{
+      const time = nowTime();
+      if(it.kind==='med') dl.meds.push({id:uid(), medId:it.refId, time});
+      else if(it.kind==='drink') dl.drinks.push({id:uid(), type:it.refId, ml:it.ml||cfgDrinkType(it.refId).defaultMl, time});
+      else if(it.kind==='activity') dl.activities.push({id:uid(), activityId:it.refId, time});
+    });
+  });
 }
 
 function settingsExportHtml(){
@@ -2085,6 +2309,7 @@ function wireSettings(){
 
   // symptoms
   const addSym = $('[data-add-sym]'); if(addSym) addSym.onclick = ()=>openSymptomForm();
+  const manageGroups = $('[data-manage-groups]'); if(manageGroups) manageGroups.onclick = ()=>openManageGroupsSheet();
   $$('[data-edit-sym]').forEach(b=>b.onclick=()=>openSymptomForm(symById(b.dataset.editSym)));
   $$('[data-del-sym]').forEach(b=>b.onclick=async ()=>{
     if(!confirm('Usunąć ten objaw?')) return;
@@ -2115,6 +2340,15 @@ function wireSettings(){
     await saveConfig(state.cfg); await render();
   });
 
+  // templates
+  const addTmpl = $('[data-add-tmpl]'); if(addTmpl) addTmpl.onclick = ()=>openTemplateForm();
+  $$('[data-edit-tmpl]').forEach(b=>b.onclick=()=>openTemplateForm((state.cfg.templates||[]).find(t=>t.id===b.dataset.editTmpl)));
+  $$('[data-del-tmpl]').forEach(b=>b.onclick=async ()=>{
+    if(!confirm('Usunąć ten szablon?')) return;
+    state.cfg.templates = (state.cfg.templates||[]).filter(t=>t.id!==b.dataset.delTmpl);
+    await saveConfig(state.cfg); await render();
+  });
+
   // general
   const dbhSave = $('#dbh-save');
   if(dbhSave) dbhSave.onclick = async ()=>{
@@ -2122,6 +2356,22 @@ function wireSettings(){
     await saveConfig(state.cfg);
     toast('Zapisano'); state.selectedDate = effectiveDateStr(state.cfg);
   };
+
+  const annSave = $('#ann-save');
+  if(annSave) annSave.onclick = async ()=>{
+    const date = $('#ann-date').value;
+    const text = $('#ann-text').value.trim();
+    if(!date || !text){ toast('Podaj datę i opis'); return; }
+    state.cfg.annotations = state.cfg.annotations||[];
+    state.cfg.annotations.push({id:uid(), date, text});
+    await saveConfig(state.cfg);
+    toast('Dodano adnotację'); await render();
+  };
+  $$('[data-del-ann]').forEach(b=>b.onclick=async ()=>{
+    state.cfg.annotations = (state.cfg.annotations||[]).filter(a=>a.id!==b.dataset.delAnn);
+    await saveConfig(state.cfg);
+    toast('Usunięto'); await render();
+  });
 
   // export
   const expRangeBtns = $$('#exp-range button');
@@ -2181,8 +2431,53 @@ function openMedForm(existing, afterSave){
   });
 }
 
+function openManageGroupsSheet(){
+  const groups = getSymptomGroups();
+  openSheet(`
+    <h3>Kategorie objawów</h3>
+    <div class="sub">Zmień nazwę, usuń (objawy wracają do "Inne"), albo dodaj nową — pojawi się od razu przy dodawaniu objawu.</div>
+    <div class="list" id="grp-list-edit">${groups.map(g=>`
+      <div class="row">
+        <input type="text" value="${escapeHtml(g)}" data-grp-rename="${escapeHtml(g)}" style="flex:1;">
+        <button class="swipe-del" data-grp-del="${escapeHtml(g)}">✕</button>
+      </div>`).join('') || '<div class="empty">Brak kategorii.</div>'}</div>
+    <label class="field-label">Nowa kategoria</label>
+    <input type="text" id="grp-new-name" placeholder="np. Przeziębienie / infekcja">
+    <div style="margin-top:10px;"><button class="btn secondary sm" id="grp-new-save">Dodaj kategorię</button></div>
+  `, (ov)=>{
+    ov.querySelectorAll('[data-grp-rename]').forEach(inp=>inp.onchange=async ()=>{
+      const oldName = inp.dataset.grpRename;
+      const newName = inp.value.trim();
+      if(!newName || newName===oldName) return;
+      state.cfg.symptomGroups = getSymptomGroups().map(g=>g===oldName?newName:g);
+      (state.cfg.symptoms||[]).forEach(s=>{ if((s.group||'Inne')===oldName) s.group = newName; });
+      await saveConfig(state.cfg);
+      toast('Zmieniono nazwę kategorii');
+      closeSheet(); openManageGroupsSheet();
+    });
+    ov.querySelectorAll('[data-grp-del]').forEach(b=>b.onclick=async ()=>{
+      const name = b.dataset.grpDel;
+      state.cfg.symptomGroups = getSymptomGroups().filter(g=>g!==name);
+      (state.cfg.symptoms||[]).forEach(s=>{ if((s.group||'Inne')===name) s.group = 'Inne'; });
+      await saveConfig(state.cfg);
+      toast('Usunięto kategorię');
+      closeSheet(); openManageGroupsSheet();
+    });
+    ov.querySelector('#grp-new-save').onclick = async ()=>{
+      const name = ov.querySelector('#grp-new-name').value.trim();
+      if(!name){ toast('Podaj nazwę'); return; }
+      const current = getSymptomGroups();
+      if(current.includes(name)){ toast('Taka kategoria już istnieje'); return; }
+      state.cfg.symptomGroups = [...current, name];
+      await saveConfig(state.cfg);
+      toast('Dodano kategorię');
+      closeSheet(); openManageGroupsSheet();
+    };
+  });
+}
+
 function openSymptomForm(existing){
-  const existingGroups = [...new Set((state.cfg.symptoms||[]).map(s=>s.group||'Inne'))];
+  const existingGroups = getSymptomGroups();
   openSheet(`
     <h3>${existing?'Edytuj objaw':'Nowy objaw'}</h3>
     <label class="field-label" style="margin-top:0;">Nazwa</label>
